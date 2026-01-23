@@ -91,8 +91,8 @@ def test_load_ipo_meta_date_parsing(tmp_path):
     assert all(isinstance(d, date) for d in result['ipo_date'])
 
 
-def test_load_ipo_meta_preserves_other_columns(tmp_path):
-    """Test load_ipo_meta preserves additional columns if present."""
+def test_load_ipo_meta_returns_core_columns(tmp_path):
+    """Test load_ipo_meta returns only core columns (ticker, ipo_date)."""
     csv_path = tmp_path / "ipo_meta.csv"
     df = pd.DataFrame({
         'ticker': ['AAPL', 'MSFT'],
@@ -104,8 +104,7 @@ def test_load_ipo_meta_preserves_other_columns(tmp_path):
     
     result = load_ipo_meta(csv_path)
     
-    # Should have all columns
+    # Should have only core columns
     assert 'ticker' in result.columns
     assert 'ipo_date' in result.columns
-    assert 'sector' in result.columns
-    assert 'market_cap' in result.columns
+    assert len(result.columns) == 2  # Only ticker and ipo_date

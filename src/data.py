@@ -4,7 +4,7 @@ Owned by Person A.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -75,6 +75,8 @@ def load_ipo_meta(path: Union[str, Path]) -> pd.DataFrame:
     Required columns: ticker, ipo_date
     Parses ipo_date as datetime/date.
     
+    Also supports CSV files with 'Symbol' and 'Date Priced' columns (auto-converts).
+    
     Args:
         path: Path to CSV file
         
@@ -91,11 +93,70 @@ def load_ipo_meta(path: Union[str, Path]) -> pd.DataFrame:
     
     df = pd.read_csv(path)
     
+    # Handle different column name formats
+    if 'Symbol' in df.columns and 'ticker' not in df.columns:
+        df['ticker'] = df['Symbol']
+    if 'Date Priced' in df.columns and 'ipo_date' not in df.columns:
+        df['ipo_date'] = df['Date Priced']
+    
     # Validate required columns
     validate_columns(df, ['ticker', 'ipo_date'])
     
     # Parse ipo_date (handle mixed formats)
     df['ipo_date'] = pd.to_datetime(df['ipo_date'], format='mixed', errors='coerce').dt.date
+    
+    # Drop rows with invalid dates
+    df = df.dropna(subset=['ipo_date', 'ticker'])
+    
+    return df[['ticker', 'ipo_date']].copy()
+
+
+def generate_synthetic_prices(
+    ticker: str,
+    ipo_date: Union[date, datetime],
+    N: int,
+    initial_price: float = 100.0,
+    volatility: float = 0.02,
+    rng: Optional[np.random.Generator] = None
+) -> pd.DataFrame:
+    """
+    Generate synthetic daily price data for an IPO episode.
+    
+    Creates N days of price data starting from ipo_date with random walk.
+    
+    Args:
+        ticker: Stock ticker
+        ipo_date: IPO date (day 0)
+        N: Number of days
+        initial_price: Starting price
+        volatility: Daily volatility (std of returns)
+        rng: Random number generator (for reproducibility)
+        
+    Returns:
+        DataFrame with columns: date, close, volume
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    
+    if isinstance(ipo_date, datetime):
+        ipo_date = ipo_date.date()
+    
+    dates = [ipo_date + timedelta(days=i) for i in range(N)]
+    
+    # Generate random walk prices
+    returns = rng.normal(0, volatility, N)
+    prices = [initial_price]
+    for ret in returns[1:]:
+        prices.append(prices[-1] * (1 + ret))
+    
+    # Generate synthetic volume
+    volumes = rng.lognormal(15, 0.5, N).astype(int)
+    
+    df = pd.DataFrame({
+        'date': pd.to_datetime(dates),
+        'close': prices,
+        'volume': volumes
+    })
     
     return df
 

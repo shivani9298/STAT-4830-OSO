@@ -37,6 +37,7 @@ ENV/
 results/*.json
 results/*.jsonl
 results/*.csv
+results/report.md
 data/*.csv
 data/*.parquet
 *.log
