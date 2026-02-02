@@ -1,0 +1,13 @@
+# Ignore everything in figures directory except PNGs and TEX files
+docs/figures/*
+!docs/figures/*.png
+!docs/figures/*.tex
+
+local/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
