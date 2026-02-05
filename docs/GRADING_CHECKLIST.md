@@ -67,3 +67,4 @@ This checklist evaluates **only** the IPO index builder (`build_ipo_index.py`) a
 - **Development process & repo**: Logs and docs that refer to the index are in place; safety and alternatives are documented.
 
 **Optional improvements**: (1) Add a single end-to-end test or script that runs build_ipo_index with small --max_ipos and checks output files exist. (2) Print elapsed time at end of main() in build_ipo_index.py for resource monitoring.
+
