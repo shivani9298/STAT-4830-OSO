@@ -1,0 +1,5 @@
+Name,Total Return,Ann. Return,Ann. Volatility,Sharpe Ratio,Sortino Ratio,Max Drawdown,Calmar Ratio
+OGD Portfolio,193.46%,28.50%,20.06%,1.42,2.05,-26.17%,1.09
+Equal Weight,577.70%,56.15%,35.03%,1.60,2.71,-51.33%,1.09
+S&P 500 Only,86.12%,15.57%,16.11%,0.97,1.31,-24.50%,0.64
+IPO Index Only,1699.28%,96.03%,61.36%,1.56,2.78,-73.12%,1.31

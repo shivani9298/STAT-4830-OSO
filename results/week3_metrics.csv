@@ -1,0 +1,5 @@
+Name,Total Return,Ann. Return,Ann. Volatility,Sharpe,Sortino,Max Drawdown,Calmar
+OGD Portfolio,68.4%,16.5%,16.8%,0.98,1.35,-32.3%,0.51
+Equal Weight,208.0%,39.0%,38.6%,1.01,1.78,-54.8%,0.71
+SPY Only,50.1%,12.6%,15.9%,0.80,1.05,-29.3%,0.43
+IPO Only,357.7%,56.2%,69.2%,0.81,1.49,-75.1%,0.75
