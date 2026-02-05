@@ -10,19 +10,34 @@ This project implements a constrained trading optimization system that learns/op
 
 ```
 .
+├── README.md
+├── report.md                    # Week 4 report (problem, approach, results, next steps)
+├── notebooks/
+│   └── week4_implementation.ipynb  # Week 4 working implementation & validation
 ├── src/
-│   ├── data.py          # Data loading and episode building (Person A)
-│   ├── policy.py        # Trading decision logic (Person B)
-│   ├── backtest.py      # Backtest engine (Person C)
-│   ├── metrics.py       # Performance metrics (Person C)
-│   ├── objective.py    # Objective function (Person D)
-│   ├── optimize.py      # Optimization and baselines (Person D)
-│   └── logging_utils.py # Trial logging (Person D)
-├── tests/               # Test suite
-├── archive-3/           # IPO data (2010-2018)
-├── results/            # Output artifacts (generated)
-├── run_week3.py        # CLI runner
-└── generate_report.py # Generate markdown reports from results
+│   ├── model.py           # Core optimization interface (re-exports policy, objective, training)
+│   ├── data.py            # Data loading and episode building (Person A)
+│   ├── policy.py          # Rule-based trading logic (Person B)
+│   ├── backtest.py        # Backtest engine (Person C)
+│   ├── metrics.py         # Performance metrics (Person C)
+│   ├── objective.py       # Objective function (Person D)
+│   ├── optimize.py        # Random search and baselines (Person D)
+│   ├── logging_utils.py   # Trial logging (Person D)
+│   ├── features.py        # Feature extraction for policy network
+│   ├── policy_network.py  # PyTorch contextual bandit policy
+│   └── train_policy.py    # REINFORCE training (SGD/Adam, validation)
+├── tests/
+│   ├── test_basic.py      # Basic validation (objective, metrics, backtest)
+│   └── ...                # Other tests
+├── docs/
+│   ├── COURSE_CONCEPTS.md
+│   ├── llm_exploration/
+│   │   └── week4_log.md   # Week 4 AI conversation log
+│   └── development_log.md # Progress & decisions
+├── results/               # Output artifacts (generated)
+├── run_week3.py           # CLI: random search
+├── run_pytorch.py         # CLI: PyTorch policy training
+└── generate_report.py    # Generate markdown reports
 ```
 
 ## Installation
@@ -32,6 +47,8 @@ pip install -r requirements.txt
 ```
 
 ## Quick Start
+
+### Random search (rule-based policy)
 
 ### Synthetic Data (Testing)
 
@@ -43,6 +60,16 @@ python run_week3.py \
   --seed 0 \
   --lam 1.0 --alpha 0.9 --kappa 1.0 --mu 1.0 --cost_bps 10
 ```
+
+### PyTorch policy (REINFORCE + Adam)
+
+Uses course concepts: autodiff, SGD/Adam, step-size schedules, validation.
+
+```bash
+python run_pytorch.py --data synth --n_epochs 50 --lr 1e-3 --batch_size 32 --val_frac 0.2
+```
+
+Trained policy is saved to `results/policy_network.pt`. See `docs/COURSE_CONCEPTS.md` for how course lectures map to this code.
 
 ### Real Data (Archive-3)
 

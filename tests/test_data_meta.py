@@ -102,9 +102,9 @@ def test_load_ipo_meta_returns_core_columns(tmp_path):
     })
     df.to_csv(csv_path, index=False)
     
-    result = load_ipo_meta(csv_path)
+    result = load_ipo_meta(csv_path, full=False)
     
-    # Should have only core columns
+    # full=False returns only core columns
     assert 'ticker' in result.columns
     assert 'ipo_date' in result.columns
     assert len(result.columns) == 2  # Only ticker and ipo_date

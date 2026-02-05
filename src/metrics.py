@@ -1,6 +1,5 @@
 """
 Metrics module - computes performance metrics (CVaR, MDD, turnover, etc.).
-Owned by Person C.
 """
 
 from typing import Union, Dict

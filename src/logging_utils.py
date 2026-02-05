@@ -1,6 +1,5 @@
 """
 Logging utilities - trial logging and artifact management.
-Owned by Person D.
 """
 
 import json

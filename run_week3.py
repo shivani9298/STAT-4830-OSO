@@ -1,203 +1,271 @@
 #!/usr/bin/env python3
 """
-CLI runner for IPO trading strategy optimization.
-Owned by Person D.
+Simple stock vs S&P 500 comparison.
+Buy-and-hold analysis: Did the stock beat the market?
 """
 
 import argparse
 import sys
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.data import load_ipo_meta, load_prices_dir, build_episodes, generate_synthetic_prices
-from src.optimize import random_search, baseline_always_skip, baseline_always_participate, baseline_fixed_hold_k
+from src.data import fetch_stock_vs_benchmark
 
 
-def create_synthetic_data(n_episodes: int = 50, N: int = 10, seed: int = 0):
-    """Create synthetic IPO episodes for testing."""
-    rng = np.random.default_rng(seed)
-    
-    episodes = []
-    base_date = pd.Timestamp('2020-01-01').date()
-    
-    for i in range(n_episodes):
-        ticker = f"SYNTH{i:03d}"
-        ipo_date = base_date + pd.Timedelta(days=i * 7)  # Weekly IPOs
-        
-        price_df = generate_synthetic_prices(
-            ticker=ticker,
-            ipo_date=ipo_date,
-            N=N,
-            initial_price=rng.uniform(10, 100),
-            volatility=rng.uniform(0.01, 0.05),
-            rng=rng
-        )
-        
-        from src.data import Episode
-        episode = Episode(
-            ticker=ticker,
-            ipo_date=ipo_date,
-            df=price_df,
-            day0_index=0,
-            N=N
-        )
-        episodes.append(episode)
-    
-    return episodes
+def calculate_fitness(returns, risk_free_rate=0.04):
+    """
+    Calculate the fitness score for a portfolio.
+
+    Fitness = 0.4 * Sharpe + 0.3 * Annual Return + 0.3 * (1 + MaxDrawdown)
+
+    Parameters:
+        returns (np.array): Array of daily portfolio returns
+        risk_free_rate (float): Annual risk-free rate (default 4%)
+
+    Returns:
+        dict: Fitness score and components
+    """
+    if len(returns) == 0:
+        return {'fitness': 0, 'sharpe': 0, 'annual_return': 0, 'max_drawdown': 0}
+
+    # Annualized return
+    portfolio_return = np.mean(returns) * 252
+
+    # Annualized volatility
+    portfolio_volatility = np.std(returns) * np.sqrt(252)
+
+    # Sharpe ratio
+    if portfolio_volatility > 0:
+        sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_volatility
+    else:
+        sharpe_ratio = 0
+
+    # Maximum drawdown calculation
+    cumulative_returns = np.cumprod(1 + returns)
+    running_max = np.maximum.accumulate(cumulative_returns)
+    drawdowns = (cumulative_returns - running_max) / running_max
+    max_drawdown = np.min(drawdowns)
+
+    # Combined fitness score
+    fitness = (0.4 * sharpe_ratio +
+               0.3 * portfolio_return +
+               0.3 * (1 + max_drawdown))  # Add 1 to make max_drawdown positive
+
+    return {
+        'fitness': fitness,
+        'sharpe': sharpe_ratio,
+        'annual_return': portfolio_return,
+        'max_drawdown': max_drawdown,
+        'volatility': portfolio_volatility,
+    }
+
+
+def calculate_metrics(df: pd.DataFrame, ticker: str, benchmark: str = "SPY") -> dict:
+    """Calculate performance metrics for stock vs benchmark."""
+
+    # Total returns
+    stock_return = (df['close'].iloc[-1] / df['close'].iloc[0]) - 1
+    bench_return = (df['benchmark_close'].iloc[-1] / df['benchmark_close'].iloc[0]) - 1
+    excess_return = stock_return - bench_return
+
+    # Daily returns
+    daily_stock = df['close'].pct_change().dropna()
+    daily_bench = df['benchmark_close'].pct_change().dropna()
+    daily_excess = daily_stock - daily_bench
+
+    # Volatility (annualized)
+    stock_vol = daily_stock.std() * np.sqrt(252)
+    bench_vol = daily_bench.std() * np.sqrt(252)
+    excess_vol = daily_excess.std() * np.sqrt(252)
+
+    # Sharpe ratio (assuming 0 risk-free rate for simplicity)
+    trading_days = len(df)
+    annual_factor = 252 / trading_days
+    stock_sharpe = (stock_return * annual_factor) / stock_vol if stock_vol > 0 else 0
+    bench_sharpe = (bench_return * annual_factor) / bench_vol if bench_vol > 0 else 0
+
+    # Information ratio (excess return / tracking error)
+    info_ratio = (excess_return * annual_factor) / excess_vol if excess_vol > 0 else 0
+
+    # Max drawdown
+    stock_cummax = (1 + daily_stock).cumprod().cummax()
+    stock_drawdown = ((1 + daily_stock).cumprod() / stock_cummax) - 1
+    stock_max_dd = stock_drawdown.min()
+
+    bench_cummax = (1 + daily_bench).cumprod().cummax()
+    bench_drawdown = ((1 + daily_bench).cumprod() / bench_cummax) - 1
+    bench_max_dd = bench_drawdown.min()
+
+    # Win rate (days stock beat benchmark)
+    win_days = (daily_excess > 0).sum()
+    total_days = len(daily_excess)
+    win_rate = win_days / total_days if total_days > 0 else 0
+
+    # Beta (stock vs benchmark)
+    covariance = daily_stock.cov(daily_bench)
+    bench_variance = daily_bench.var()
+    beta = covariance / bench_variance if bench_variance > 0 else 1
+
+    # Alpha (annualized)
+    alpha = (stock_return - beta * bench_return) * annual_factor
+
+    # Calculate fitness scores
+    stock_fitness = calculate_fitness(daily_stock.values)
+    bench_fitness = calculate_fitness(daily_bench.values)
+    excess_fitness = calculate_fitness(daily_excess.values)
+
+    return {
+        'ticker': ticker,
+        'benchmark': benchmark,
+        'trading_days': trading_days,
+        'stock_return': stock_return,
+        'bench_return': bench_return,
+        'excess_return': excess_return,
+        'stock_vol': stock_vol,
+        'bench_vol': bench_vol,
+        'stock_sharpe': stock_sharpe,
+        'bench_sharpe': bench_sharpe,
+        'info_ratio': info_ratio,
+        'stock_max_dd': stock_max_dd,
+        'bench_max_dd': bench_max_dd,
+        'win_rate': win_rate,
+        'beta': beta,
+        'alpha': alpha,
+        'stock_fitness': stock_fitness,
+        'bench_fitness': bench_fitness,
+        'excess_fitness': excess_fitness,
+    }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IPO Trading Strategy Optimization")
-    
-    # Data arguments
-    parser.add_argument("--data", type=str, default="synth", choices=["synth", "path"],
-                        help="Data source: 'synth' for synthetic, 'path' for file path")
-    parser.add_argument("--prices_dir", type=str, default=None,
-                        help="Directory containing price CSV files")
-    parser.add_argument("--meta_csv", type=str, default=None,
-                        help="Path to IPO metadata CSV file")
-    parser.add_argument("--N", type=int, default=10,
-                        help="Number of days in episode window")
-    
-    # Optimization arguments
-    parser.add_argument("--trials", type=int, default=100,
-                        help="Number of optimization trials")
-    parser.add_argument("--seed", type=int, default=0,
-                        help="Random seed")
-    
-    # Objective function arguments
-    parser.add_argument("--lam", type=float, default=1.0,
-                        help="CVaR penalty weight (λ)")
-    parser.add_argument("--alpha", type=float, default=0.9,
-                        help="CVaR confidence level (α)")
-    parser.add_argument("--kappa", type=float, default=1.0,
-                        help="Cost penalty weight (κ)")
-    parser.add_argument("--mu", type=float, default=1.0,
-                        help="MDD penalty weight (μ)")
-    parser.add_argument("--cost_bps", type=float, default=10.0,
-                        help="Transaction cost in basis points")
-    
-    # Output arguments
-    parser.add_argument("--out_dir", type=str, default="results",
-                        help="Output directory for results")
-    
+    parser = argparse.ArgumentParser(description="Stock vs S&P 500 Buy-and-Hold Comparison")
+
+    parser.add_argument("--ticker", type=str, default="AAPL",
+                        help="Stock ticker to analyze (e.g., AAPL, GOOGL, MSFT)")
+    parser.add_argument("--benchmark", type=str, default="SPY",
+                        help="Benchmark ticker (default: SPY for S&P 500)")
+    parser.add_argument("--period", type=str, default="1y",
+                        help="Historical period: 1mo, 3mo, 6mo, 1y, 2y, 5y, max")
+
     args = parser.parse_args()
-    
-    # Load or generate episodes
-    if args.data == "synth":
-        print("Generating synthetic data...")
-        episodes = create_synthetic_data(n_episodes=50, N=args.N, seed=args.seed)
-        print(f"Created {len(episodes)} synthetic episodes")
-    else:
-        if args.meta_csv is None:
-            # Try to use archive-3 data
-            meta_path = Path("archive-3/ipo_clean_2010_2018.csv")
-            if not meta_path.exists():
-                print(f"Error: --meta_csv required when --data=path")
-                sys.exit(1)
-        else:
-            meta_path = Path(args.meta_csv)
-        
-        if args.prices_dir is None:
-            # Generate synthetic prices for each IPO
-            print(f"Loading IPO metadata from {meta_path}...")
-            meta_df = load_ipo_meta(meta_path)
-            print(f"Loaded {len(meta_df)} IPOs")
-            
-            # Generate synthetic prices
-            print("Generating synthetic price data...")
-            rng = np.random.default_rng(args.seed)
-            prices_map = {}
-            for _, row in meta_df.iterrows():
-                ticker = row['ticker']
-                ipo_date = row['ipo_date']
-                price_df = generate_synthetic_prices(
-                    ticker=ticker,
-                    ipo_date=ipo_date,
-                    N=args.N + 5,  # Extra days for safety
-                    initial_price=rng.uniform(10, 100),
-                    volatility=rng.uniform(0.01, 0.05),
-                    rng=rng
-                )
-                prices_map[ticker] = price_df
-        else:
-            prices_dir = Path(args.prices_dir)
-            meta_df = load_ipo_meta(meta_path)
-            prices_map = load_prices_dir(prices_dir)
-        
-        print("Building episodes...")
-        episodes = build_episodes(meta_df, prices_map, N=args.N, short_mode="skip")
-        print(f"Built {len(episodes)} episodes")
-    
-    if len(episodes) == 0:
-        print("Error: No episodes available for optimization")
+
+    print(f"\n{'='*60}")
+    print(f"  {args.ticker} vs {args.benchmark} (S&P 500)")
+    print(f"  Period: {args.period}")
+    print(f"{'='*60}\n")
+
+    try:
+        df = fetch_stock_vs_benchmark(args.ticker, args.benchmark, args.period)
+    except Exception as e:
+        print(f"Error fetching data: {e}")
         sys.exit(1)
-    
-    # Prepare objective kwargs
-    objective_kwargs = {
-        "lam": args.lam,
-        "alpha": args.alpha,
-        "kappa": args.kappa,
-        "mu": args.mu,
-        "cost_bps": args.cost_bps
-    }
-    
-    # Run optimization
-    print(f"\nRunning random search with {args.trials} trials...")
-    out_dir = Path(args.out_dir)
-    results = random_search(
-        episodes=episodes,
-        n_trials=args.trials,
-        seed=args.seed,
-        objective_kwargs=objective_kwargs,
-        out_dir=out_dir
-    )
-    
+
+    metrics = calculate_metrics(df, args.ticker, args.benchmark)
+
     # Print results
-    print("\n" + "="*60)
-    print("OPTIMIZATION RESULTS")
-    print("="*60)
-    
-    print(f"\nBest Score: {results['best_score']:.6f}")
-    print(f"\nBest Metrics:")
-    for key, value in results['best_metrics'].items():
-        print(f"  {key}: {value:.6f}")
-    
-    print(f"\nBest Parameters:")
-    for key, value in results['best_params'].items():
-        print(f"  {key}: {value}")
-    
-    print(f"\nTop 5 Trials:")
-    for i, record in enumerate(results['leaderboard'], 1):
-        print(f"\n  {i}. Score: {record['score']:.6f}")
-        print(f"     E[R]: {record['metrics']['E[R]']:.6f}, "
-              f"CVaR: {record['metrics']['CVaR']:.6f}, "
-              f"MDD: {record['metrics']['MDD']:.6f}")
-    
-    # Run baselines
-    print("\n" + "="*60)
-    print("BASELINE COMPARISONS")
-    print("="*60)
-    
-    baselines = [
-        baseline_always_skip(episodes),
-        baseline_always_participate(episodes, weight=0.1),
-        baseline_fixed_hold_k(episodes, hold_k=1, weight=0.1),
-        baseline_fixed_hold_k(episodes, hold_k=5, weight=0.1),
-    ]
-    
-    for baseline in baselines:
-        print(f"\n{baseline['name']}:")
-        print(f"  Score: {baseline['score']:.6f}")
-        print(f"  E[R]: {baseline['metrics']['E[R]']:.6f}, "
-              f"CVaR: {baseline['metrics']['CVaR']:.6f}, "
-              f"MDD: {baseline['metrics']['MDD']:.6f}")
-    
-    print(f"\n\nResults saved to: {out_dir}/")
-    print(f"  - best_params.json")
-    print(f"  - trials.jsonl")
-    print(f"  - results.csv")
+    print(f"Date Range: {df['date'].iloc[0].date()} to {df['date'].iloc[-1].date()}")
+    print(f"Trading Days: {metrics['trading_days']}")
+
+    print(f"\n{'─'*60}")
+    print("RETURNS")
+    print(f"{'─'*60}")
+    print(f"  {args.ticker:8} Total Return:    {metrics['stock_return']*100:+8.2f}%")
+    print(f"  {args.benchmark:8} Total Return:    {metrics['bench_return']*100:+8.2f}%")
+    print(f"  {'─'*40}")
+    print(f"  Excess Return:          {metrics['excess_return']*100:+8.2f}%")
+
+    if metrics['excess_return'] > 0:
+        print(f"\n  Result: {args.ticker} BEAT the S&P 500 by {metrics['excess_return']*100:.2f}%")
+    elif metrics['excess_return'] < 0:
+        print(f"\n  Result: {args.ticker} UNDERPERFORMED the S&P 500 by {abs(metrics['excess_return'])*100:.2f}%")
+    else:
+        print(f"\n  Result: {args.ticker} MATCHED the S&P 500")
+
+    print(f"\n{'─'*60}")
+    print("RISK METRICS")
+    print(f"{'─'*60}")
+    print(f"  {args.ticker:8} Volatility (ann): {metrics['stock_vol']*100:8.2f}%")
+    print(f"  {args.benchmark:8} Volatility (ann): {metrics['bench_vol']*100:8.2f}%")
+    print(f"  {args.ticker:8} Max Drawdown:     {metrics['stock_max_dd']*100:8.2f}%")
+    print(f"  {args.benchmark:8} Max Drawdown:     {metrics['bench_max_dd']*100:8.2f}%")
+
+    print(f"\n{'─'*60}")
+    print("RISK-ADJUSTED METRICS")
+    print(f"{'─'*60}")
+    print(f"  {args.ticker:8} Sharpe Ratio:    {metrics['stock_sharpe']:8.2f}")
+    print(f"  {args.benchmark:8} Sharpe Ratio:    {metrics['bench_sharpe']:8.2f}")
+    print(f"  Information Ratio:      {metrics['info_ratio']:8.2f}")
+    print(f"  Beta:                   {metrics['beta']:8.2f}")
+    print(f"  Alpha (annualized):     {metrics['alpha']*100:+8.2f}%")
+
+    print(f"\n{'─'*60}")
+    print("CONSISTENCY")
+    print(f"{'─'*60}")
+    print(f"  Daily Win Rate:         {metrics['win_rate']*100:8.1f}%")
+    print(f"  (Days {args.ticker} beat {args.benchmark})")
+
+    print(f"\n{'─'*60}")
+    print("FITNESS SCORE")
+    print("  Formula: 0.4*Sharpe + 0.3*AnnualReturn + 0.3*(1+MaxDD)")
+    print(f"{'─'*60}")
+    sf = metrics['stock_fitness']
+    bf = metrics['bench_fitness']
+    ef = metrics['excess_fitness']
+    print(f"  {args.ticker:8} Fitness:         {sf['fitness']:8.3f}")
+    print(f"  {args.benchmark:8} Fitness:         {bf['fitness']:8.3f}")
+    print(f"  {'─'*40}")
+    print(f"  Excess Fitness:         {ef['fitness']:8.3f}")
+
+    if sf['fitness'] > bf['fitness']:
+        print(f"\n  Result: {args.ticker} has HIGHER fitness than {args.benchmark}")
+    elif sf['fitness'] < bf['fitness']:
+        print(f"\n  Result: {args.ticker} has LOWER fitness than {args.benchmark}")
+    else:
+        print(f"\n  Result: {args.ticker} and {args.benchmark} have EQUAL fitness")
+
+    print(f"\n{'='*60}\n")
+
+    # Price chart using ASCII
+    print("PRICE PERFORMANCE (normalized to 100)")
+    print(f"{'─'*60}")
+
+    # Normalize prices to start at 100
+    stock_norm = 100 * df['close'] / df['close'].iloc[0]
+    bench_norm = 100 * df['benchmark_close'] / df['benchmark_close'].iloc[0]
+
+    # Sample ~20 points for ASCII chart
+    n_points = min(20, len(df))
+    indices = np.linspace(0, len(df)-1, n_points, dtype=int)
+
+    all_vals = list(stock_norm.iloc[indices]) + list(bench_norm.iloc[indices])
+    min_val, max_val = min(all_vals), max(all_vals)
+    chart_width = 40
+
+    def val_to_pos(val):
+        if max_val == min_val:
+            return chart_width // 2
+        return int((val - min_val) / (max_val - min_val) * (chart_width - 1))
+
+    print(f"\n  {'Start':<10} {'─'*chart_width} End")
+
+    for i, idx in enumerate(indices):
+        date_str = df['date'].iloc[idx].strftime('%m/%d')
+        s_val = stock_norm.iloc[idx]
+        b_val = bench_norm.iloc[idx]
+        s_pos = val_to_pos(s_val)
+        b_pos = val_to_pos(b_val)
+
+        line = [' '] * chart_width
+        # Place benchmark first, then stock (stock overwrites if same position)
+        line[b_pos] = 'S'  # SPY
+        line[s_pos] = '*'  # Stock
+        if s_pos == b_pos:
+            line[s_pos] = 'X'  # Overlap
+
+        print(f"  {date_str:6} |{''.join(line)}| {s_val:.0f} vs {b_val:.0f}")
+
+    print(f"\n  Legend: * = {args.ticker}, S = {args.benchmark}, X = overlap")
+    print()
 
 
 if __name__ == "__main__":

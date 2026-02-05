@@ -1,6 +1,5 @@
 """
 Optimizer module - random search and optimization logic.
-Owned by Person D.
 """
 
 import json
@@ -60,18 +59,23 @@ def random_search(
         )
         
         # Create trial record (convert numpy types to native Python types)
+        params_dict = {
+            "participate_threshold": float(params.participate_threshold),
+            "entry_day": int(params.entry_day),
+            "hold_k": int(params.hold_k),
+            "w_max": float(params.w_max),
+            "raw_weight": float(params.raw_weight),
+            "use_volume_cap": bool(params.use_volume_cap),
+            "vol_cap_mult": float(params.vol_cap_mult)
+        }
+        if params.min_offer_amount is not None:
+            params_dict["min_offer_amount"] = float(params.min_offer_amount)
+        if params.max_offer_amount is not None:
+            params_dict["max_offer_amount"] = float(params.max_offer_amount)
         trial_record = {
             "trial": int(trial_idx),
             "seed": int(seed),
-            "params": {
-                "participate_threshold": float(params.participate_threshold),
-                "entry_day": int(params.entry_day),
-                "hold_k": int(params.hold_k),
-                "w_max": float(params.w_max),
-                "raw_weight": float(params.raw_weight),
-                "use_volume_cap": bool(params.use_volume_cap),
-                "vol_cap_mult": float(params.vol_cap_mult)
-            },
+            "params": params_dict,
             "metrics": {k: float(v) for k, v in metrics.items()},
             "score": float(trial_score)
         }
