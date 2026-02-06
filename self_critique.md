@@ -2,7 +2,7 @@
 
 ## OBSERVE: Initial Assessment
 
-After reviewing my report and implementation:
+After reviewing our report and implementation:
 - The code runs end-to-end and produces reasonable results
 - Mathematical formulation is present but could be more rigorous
 - Data sources are real (Yahoo Finance) but have limitations
@@ -36,31 +36,21 @@ The biggest risk is **overfitting to the 2020-2021 IPO boom**. This period had u
 
 ## DECIDE: Concrete Next Actions
 
-1. **Fix Data Pipeline** (Week 4): Implement historical shares outstanding lookup using quarterly SEC filings (10-Q) or find a data provider with point-in-time market caps. This directly addresses the look-ahead bias.
+1. **Update Model Architecture** (Week 5): Add a model architecture such as a GRU to predict future model weights/investment strategies
 
-2. **Add Hyperparameter Optimization** (Week 4-5): Implement grid search or Bayesian optimization for λ values using a validation set (e.g., 2020-2022 train, 2023 validate, 2024+ test). Document sensitivity of results to parameter choices.
+2. **Add Hyperparameter Optimization** (Week 5): Implement grid search or Bayesian optimization for λ values using a validation set (e.g., 2020-2022 train, 2023 validate, 2024+ test). Document sensitivity of results to parameter choices.
 
-3. **Expand Validation** (Week 5): Add statistical tests (bootstrap confidence intervals for Sharpe ratio), include traditional benchmarks (60/40, risk parity), and create a proper train/validation/test split to detect overfitting.
+3. **Expand Validation** (Week 5): Add statistical tests, include traditional benchmarks, and create a proper train/validation/test split to detect overfitting.
 
 ---
 
 ## ACT: Resource Needs
+We plan to use Scikit-optimize for Bayesian hyperparameter tuning and expand the dataset to include more assets, longer history, and macro features to reduce overfitting. Key knowledge gaps include implementing GRU sequence models correctly in PyTorch and selecting appropriate time-series statistical tests (forecast comparison and Sharpe significance). Major blockers are limited or slow access to WRDS data and long runtimes for hyperparameter search over multi-year daily data, which may require GPU use and search-space reduction. 
 
-**Tools needed:**
-- SEC EDGAR API access for quarterly filings (free)
-- Optuna or scikit-optimize for hyperparameter tuning
-- scipy.stats for bootstrap confidence intervals
+We plan on referencing this article: https://sharmasaravanan.medium.com/time-series-forecasting-using-gru-a-step-by-step-guide-b537dc8dcfba
+https://wrds-www.wharton.upenn.edu/pages/classroom/accessing-data-via-the-wrds-api-and-excel/
 
-**Knowledge gaps:**
-- Need to learn how to parse SEC filings for shares outstanding
-- Should review literature on online convex optimization for better theoretical grounding
+We would also need a CRSP subscription as well to use the WRDS api.
 
-**Potential blockers:**
-- SEC filing parsing may be complex; may need to use a paid data provider (Polygon, EOD Historical) if free approach fails
-- Running hyperparameter search over 5 years of daily data may be slow; may need to optimize code or use cloud compute
 
----
 
-## Summary
-
-The current implementation is a solid foundation but needs work on data quality and validation rigor before the results can be trusted. The immediate priority is fixing the shares outstanding data to eliminate look-ahead bias, followed by proper hyperparameter selection and out-of-sample testing.
