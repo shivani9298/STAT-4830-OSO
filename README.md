@@ -1,236 +1,184 @@
-# STAT 4830 Project Repository
+# Online Portfolio Optimization: S&P 500 vs IPO 180-Day Index
 
-Welcome to your project repository! This template helps you develop and implement an optimization project over the semester.
+**STAT 4830 | Spring 2026 | University of Pennsylvania**
 
-## Getting Started
+This project uses **Online Gradient Descent (OGD)** to dynamically allocate a portfolio between the S&P 500 (SPY ETF) and a custom market-cap weighted index of recent IPOs. The optimizer maximizes a risk-adjusted fitness score that balances returns against volatility, drawdown, and transaction costs.
 
-1. **Finding Your Project Idea**
-   - Start with our [Project Ideas Guide](docs/finding_project_ideas.md)
-   - Use AI to explore and refine your ideas
-   - Take time to find something you care about
+## Key Results (2020--2025 Backtest)
 
-   It's very important you learn to use AI tools in your work! [Noam Brown](https://x.com/polynoamial/status/1870307185961386366) (OpenAI) says that students should...
-   > Practice working with AI. Human+AI will be superior to human or AI alone for the foreseeable future. Those who can work most effectively with AI will be the most highly valued.
+| Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max Drawdown | Calmar |
+|----------|-------------|-------------|----------|--------|--------------|--------|
+| **OGD Portfolio** | **193.5%** | **28.5%** | 20.1% | **1.42** | **-26.2%** | **1.09** |
+| Equal Weight | 577.7% | 56.2% | 35.0% | 1.60 | -51.3% | 1.09 |
+| S&P 500 Only | 86.1% | 15.6% | 16.1% | 0.97 | -24.5% | 0.64 |
+| IPO Index Only | 1699.3% | 96.0% | 61.4% | 1.56 | -73.1% | 1.31 |
 
-   ![Noam tweet](figures/noam.png)
+OGD achieves a Sharpe ratio of 1.42 with only -26% max drawdown, significantly improving risk control compared to IPO-only exposure (-73% drawdown).
 
-2. **Week 3 Deliverable**
-   - Follow the [Week 3 Instructions](docs/assignments/week3_deliverable_instructions.md)
-   - Required components:
-     - Initial report draft
-     - Self-critique document analyzing your report's strengths and weaknesses
-     - Supporting Jupyter notebooks/code
-   - Due: Friday, January 30, 2026
+---
 
-## Project Development Cycle
+## Replication Guide
 
-Each week follows an OODA (Observe, Orient, Decide, Act) loop that helps you improve your project systematically:
+### Prerequisites
 
-![Project Development Cycle - A diagram showing the OODA loop (Observe, Orient, Decide, Act) adapted for project development. Each phase has specific activities: Observe (Review Report, Check Results), Orient (Write Critique, Find Gaps), Decide (Plan Changes, Set Goals), and Act (Code, Run Tests). The phases are connected by arrows showing the flow of work, with a feedback loop labeled "Iterative Development" completing the cycle.](docs/figures/ooda_loop.png)
+- Python 3.10+
+- pip
+- Git
+- Internet connection (for Yahoo Finance data)
 
-Each cycle produces specific deliverables:
-- OBSERVE: Updated report draft
-- ORIENT: Self-critique document
-- DECIDE: Next actions plan
-- ACT: Code changes & results
+### 1. Clone the Repository
 
-See the [Week 3 Instructions](docs/assignments/week3_deliverable_instructions.md) for detailed guidance on writing your first self-critique.
+```bash
+git clone https://github.com/shivani9298/STAT-4830-OSO.git
+cd STAT-4830-OSO
+```
 
-## Project Schedule
+### 2. Install Dependencies
 
-### Deliverables (Due Fridays)
-- Week 2 (Jan 23): Email Project Team Names to Ai, Jiahao <jiahaoai@wharton.upenn.edu>
-- Week 3 (Jan 30): Report Draft 1 + Code + Self Critique
-- Week 4 (Feb 6): Slides Draft 1
-- Week 5 (Feb 13): Report Draft 2 + Code + Self Critique
-- Week 6 (Feb 20): Slides Draft 2
-- Week 7 (Feb 27): Report Draft 3 + Code + Self Critique
-- Week 8: ⚡ Lightning Talks in Class (Mar 3/5) & Slides Draft 3 due Friday ⚡
-- Spring Break (Mar 7-15)
-- Week 9 (Mar 20): Report Draft 4 + Code + Self Critique
-- Week 10 (Mar 27): Slides Draft 4
-- Week 11 (Apr 3): Report Draft 5 + Code + Self Critique
-- Week 12 (Apr 10): Slides Draft 5
-- Week 13 (Apr 17): Report Draft 6 + Code + Self Critique
-- Week 14 (Apr 21/23): Final Presentations in Class
-- Week 15 (Apr 28): Final Report + Code + Self Critique
+```bash
+pip install torch numpy pandas yfinance matplotlib pytest
+```
 
-Note: Instructions for peer feedback will be added throughout the semester for each deliverable.
+Optional (for future hyperparameter optimization work):
+```bash
+pip install scipy scikit-optimize optuna
+```
 
-Each draft builds on the previous one, incorporating feedback and new results. You'll meet with course staff three times during the semester to discuss your progress.
+### 3. Run the Main Notebook
 
-## Project Grading
+Open and run the primary implementation notebook:
 
-Each deliverable is graded on five components:
-- Report (20%): Problem statement, methodology, results
-- Implementation (35%): Working code, tests, experiments
-- Development Process (15%): Logs, decisions, iterations
-- Critiques (15%): Reflection and planning
-  - Self-critiques (required)
-  - Peer critiques (when assigned)
-  - Response to feedback
-- Repository Structure (15%): Organization, documentation, clarity
+```bash
+jupyter notebook notebooks/week3_implementation.ipynb
+```
 
-Remember:
-- Quality > Quantity
-- Working > Perfect
+Run all cells in order. The notebook will:
+1. Fetch daily price data and shares outstanding for ~80 IPO tickers and SPY from Yahoo Finance (~1-2 min)
+2. Construct the market-cap weighted 180-day IPO index
+3. Run the OGD walk-forward backtest over ~1,200 trading days (~3 min)
+4. Print performance metrics and generate visualizations
+
+**Total runtime**: ~5 minutes on a standard laptop. No GPU required.
+
+### 4. Run Tests
+
+```bash
+pytest tests/test_basic.py -v
+```
+
+This runs 21 unit tests covering simplex projection, max drawdown computation, the OGD allocator, and fitness score behavior.
+
+### 5. Explore Pre-Computed Results
+
+If you want to inspect results without re-running the notebook, pre-computed outputs are in `results/`:
+
+| File | Description |
+|------|-------------|
+| `week3_metrics.csv` | Performance metrics for all strategies |
+| `week3_returns.csv` | Daily portfolio returns |
+| `week3_weights.csv` | Daily OGD allocation weights (SPY vs IPO) |
+
+---
+
+## Technical Approach
+
+### Objective Function
+
+The OGD optimizer maximizes:
+
+```
+F(w) = mean_return - lambda_1 * variance + lambda_2 * max_drawdown - lambda_3 * turnover
+```
+
+Where:
+- `w` = portfolio weights [SPY, IPO_INDEX], constrained to the probability simplex (long-only, fully invested)
+- `lambda_1 = 20.0` (risk aversion), `lambda_2 = 8.0` (drawdown penalty), `lambda_3 = 0.15` (turnover penalty)
+
+### Algorithm
+
+```
+For each day t:
+    1. Extract trailing 126-day window of returns
+    2. Compute fitness gradient via PyTorch autograd
+    3. Gradient ascent: w_new = w + lr * gradient
+    4. Project onto simplex (Euclidean projection, O(n log n))
+    5. Apply weights to next day's returns (walk-forward, no look-ahead)
+    6. Decay learning rate (lr *= 0.999)
+```
+
+### IPO Index Construction
+
+- ~80 IPOs from 2020--2024 with a 180 trading-day holding period per stock
+- Market-cap weighted (price x shares outstanding)
+- Average ~8.5 constituents at any given time
+
+---
 
 ## Repository Structure
 
 ```
-your-repo/
-├── README.md                    # This file
-├── report.md                    # Your project report
-├── notebooks/                   # Jupyter notebooks
-├── src/                        # Source code
-├── tests/                      # Test files
+.
+├── README.md                          # This file
+├── report.md                          # Project report (problem, approach, results)
+├── self_critique.md                   # OODA self-assessment
+├── notebooks/
+│   └── week3_implementation.ipynb     # Main replication notebook
+├── src/
+│   ├── __init__.py                    # Package exports
+│   ├── model.py                       # OGD allocator, simplex projection, max drawdown
+│   └── utils.py                       # Data fetching, IPO index, metrics, backtest
+├── tests/
+│   └── test_basic.py                  # Unit tests (21 tests)
+├── results/                           # Pre-computed outputs (CSV)
+├── figures/                           # Visualization outputs
 └── docs/
-    ├── finding_project_ideas.md    # Guide to finding your project
-    ├── assignments/                # Assignment instructions
-    ├── llm_exploration/           # AI conversation logs
-    └── development_log.md         # Progress & decisions
+    ├── development_log.md             # Design decisions and progress
+    ├── llm_exploration/               # AI collaboration logs
+    └── assignments/                   # Course assignment specs
 ```
 
-## Development Environment
+### Source Code Overview
 
-### Editor Setup
-We recommend using **Cursor**. Students with a `.edu` address get **one year of Cursor Pro for free**: https://cursor.com/students. Cursor is VS Code–compatible (same shortcuts/extensions) but adds in-IDE AI assistance tuned for multi-file context and refactors.
+| Module | Key Contents |
+|--------|-------------|
+| `src/model.py` | `OnlineOGDAllocator` class, `project_to_simplex()`, `max_drawdown_from_returns()` |
+| `src/utils.py` | `fetch_price_and_shares()`, `build_ipo_index()`, `calculate_metrics()`, `run_backtest()` |
 
-### Required Tools
-- Python 3.10+
-- PyTorch
-- Jupyter Notebook/Lab
-- Git
+---
 
-## Git Setup and Workflow
+## Data
 
-### First Time Setup
-1. Fork this repository
-   - Click "Fork" in the top right
-   - Name it `STAT-4830-[team-name]-project`
-   - This creates your own copy that can receive updates
+All data is fetched live from [Yahoo Finance](https://finance.yahoo.com/) via the `yfinance` Python package. No local data files need to be downloaded manually.
 
-2. Set up Git (if you haven't already):
-   Cursor includes Git integration and prompts you to install Git if it's missing.
-   
-   For detailed instructions, see the [Official Git installation guide](https://github.com/git-guides/install-git)
+- **S&P 500 proxy**: SPY ETF
+- **IPO tickers**: ~80 major US IPOs from 2020--2024 (hardcoded in the notebook)
+- **Date range**: 2020-01-01 to 2025-01-14
 
-   After installing, set up your identity:
-   ```bash
-   git config --global user.name "Your Name"
-   git config --global user.email "your.email@upenn.edu"
-   ```
+**Note**: Results may vary slightly across runs due to Yahoo Finance data updates and retroactive price adjustments.
 
-3. Clone your fork:
-   ```bash
-   # HTTPS (easier):
-   git clone https://github.com/[your-username]/STAT-4830-[team-name]-project.git
+---
 
-   # SSH (if you've set up SSH keys):
-   git clone git@github.com:[your-username]/STAT-4830-[team-name]-project.git
-   
-   cd STAT-4830-[team-name]-project
-   ```
+## Known Limitations
 
-4. Add upstream remote (to get updates):
-   ```bash
-   # HTTPS:
-   git remote add upstream https://github.com/damek/STAT-4830-project-base.git
+1. **Look-ahead bias in market caps**: Uses current shares outstanding for all historical dates (should use quarterly SEC filings)
+2. **Survivorship bias**: Only includes IPOs that still trade; excludes delisted/acquired companies
+3. **No real transaction costs**: Turnover penalty is a proxy, not actual bid-ask spreads
+4. **Heuristic hyperparameters**: Penalty coefficients not yet systematically optimized
 
-   # SSH:
-   git remote add upstream git@github.com:damek/STAT-4830-project-base.git
-   ```
+See `self_critique.md` for a detailed discussion.
 
-5. Add your team members as collaborators:
-   - Go to your repo on GitHub
-   - Settings → Collaborators → Add people
-   - Add using their GitHub usernames
+---
 
-### Working on Your Project
-1. Create a new branch:
-   ```bash
-   git checkout -b exploration
-   ```
+## Reproducing Specific Figures
 
-2. Make changes and commit:
-   ```bash
-   git add .
-   git commit -m "Description of changes"
-   git push origin exploration
-   ```
+The notebook generates two key visualizations saved to `figures/`:
+- **Cumulative returns** comparing OGD, equal-weight, SPY-only, and IPO-only strategies
+- **Weight evolution** showing how OGD shifts between SPY and IPO exposure over time
 
-### Getting Updates
-When the base repository is improved:
-```bash
-# Get updates
-git fetch upstream
-git checkout main
-git merge upstream/main
+These are produced in the final cells of `notebooks/week3_implementation.ipynb`.
 
-# Update your branch
-git checkout exploration
-git merge main
-```
+---
 
-### Troubleshooting
-- Having Git issues? Post on Ed Discussion
-- Can't push/pull? Check if you're using HTTPS or SSH
-- Windows path too long? Enable long paths:
-  ```bash
-  git config --system core.longpaths true
-  ```
+## License
 
-## Getting Help
-- Use AI tools (ChatGPT, GitHub Copilot)
-- See course staff for technical issues
-- Document your progress
-
-
-## Spring 2025 Project Examples
-
-Current student projects:
-
-1. **Decentralized Recommendation for Cold-Start Personalization**  
-   * **Summary:** Builds a cross-platform fashion recommender for users with little history. Synthesizes persona-level ratings, embeds ~3k products with CLIP image/text vectors, and benchmarks content-based filtering, collaborative filtering, low-rank matrix factorization, and a two-tower deep model. Evaluates RMSE/MAE and Precision/Recall@K to trade off global error vs. top-K relevance under cold-start.  
-   * **Link:** [Final Report](https://github.com/kuomat/STAT-4830-vllm-project/blob/main/Final%20Report.pdf)
-
-2. **Optimizing Attention Mechanisms in Transformer Models**  
-   * **Summary:** Replaces $O(n^2)$ attention with efficient variants: learned sparse masks, Performer-style kernelized attention, and hierarchical sparsity. Trains on WikiText-2, minimizing KL-divergence to a baseline Transformer while tracking cross-entropy, coherence, and memory/latency. Shows custom masks preserve fluency with lower compute.  
-   * **Link:** [Final Report](https://github.com/charisgao/STAT-4830-Optimizing-Attention-Project/blob/main/docs/report.md)
-
-3. **Poker Zero: Risk-Aware Agents for No-Limit Hold'em**  
-   * **Summary:** Designs a poker agent that blends LLM-guided reasoning with self-play reinforcement learning. Uses counterfactual regret minimization heuristics and win-rate/stack-size metrics against GTO-style opponents to study bluffing, bet sizing, and stability under incomplete information.  
-   * **Link:** [Final Report](https://github.com/AC2005/STAT-4830-poker/blob/main/docs/Final%20Report.pdf)
-
-4. **Portfolio Refinement Through Iterative Sequential Modeling (PRISM)**  
-   * **Summary:** Optimizes daily portfolios with penalties on drawdown, turnover, and concentration. Formulates a multi-objective loss, applies sequential modeling to adapt weights, and benchmarks Sharpe, max drawdown, and turnover against “safe” baselines.  
-   * **Link:** [Final Report](https://github.com/dhruv575/STAT-4830-project-base/blob/main/report.md)
-
-5. **Optimization in Preference Learning**  
-   * **Summary:** Predicts hotel choices using two pipelines: mixture preference models optimized via Frank–Wolfe variants, and low-rank matrix completion with bias-aware initialization and Huber loss. Expedia-derived data backtests show linear preference models outperform deeper nets under sparsity, while matrix completion boosts robustness.  
-   * **Link:** [Final Report](https://github.com/Lexaun-chen/STAT-4830-Group-Project/blob/main/Final_Report.pdf)
-
-6. **Designing Good Rewards for Reinforcement Learning on LLMs**  
-   * **Summary:** Implements GRPO on Qwen-1.5B for GSM8K-style reasoning, comparing rule-based vs. hybrid perplexity rewards. Early experiments on matrix inversion validate dense rewards; hybrid absolute/relative perplexity improves stability over naive reward shaping.  
-   * **Link:** [Final Report](https://github.com/JustinSQiu/STAT-4830-curriculum-learning-project/blob/main/report.md)
-
-7. **SAT Formula Extraction via Transformer Optimization**  
-   * **Summary:** Fine-tunes FLAN-T5 to emit symbolic formulas for SAT word problems, then solves them with SymPy. Uses GRPO-style training, regex parsing, and answer-level checks; reports ~81% symbolic similarity and ~72% answer accuracy with a formula-to-answer pipeline.  
-   * **Link:** [Final Report](https://github.com/awu626/STAT-4830-project/blob/main/FinalReport.md)
-
-8. **Modeling Human Behavior Without Humans – Bringing Prospect Theory to Multi-Agent RL**  
-   * **Summary:** Extends MADDPG with cumulative prospect theory transforms (CPT-MADDPG) to control risk attitudes. Evaluates on Simple Tag/Spread and first-price auctions; shows risk-seeking CPT speeds early learning, loss-averse CPT enforces prudence, and shared utility aggregation preserves coordination.  
-   * **Link:** [Final Report](https://github.com/sheyanlalmohammed1/STAT-4830-CPT-MARL-project/blob/main/report.pdf)
-
-9. **Sleep is All We Need: Optimizing EEG-Based Deep Learning Models for N1 Sleep Onset Detection**  
-   * **Summary:** Builds a two-stage ensemble for detecting the rare N1 sleep stage from single-channel EEG. Combines convolutional encoders, domain-specific PSD/Catch22 features, a transformer sequence model, and an N1-focused detector, improving N1 F1 from 0.38 to 0.53 while maintaining overall accuracy.  
-   * **Link:** [Final Report](https://github.com/kimberlyliang/STAT-4830-GOALZ-project/blob/main/report.pdf)
-
-10. **Optimizing Vehicle Routing with Graph-Based and Probabilistic Models**  
-    * **Summary:** Compares Dijkstra/A* baselines with BERT-based trip models, reinforcement learning policies, and graph neural networks to optimize travel time and EV energy use. Uses OSMnx data plus eVED/EV trip logs; predicts routes and per-trip energy, benchmarking against historical trips and shortest-path baselines.  
-    * **Link:** [Final Report](https://github.com/TheCrypted/STAT-4830-project-base/blob/main/docs/final_report.md)
-
-
-
-
-
+This project was developed for STAT 4830 at the University of Pennsylvania.
