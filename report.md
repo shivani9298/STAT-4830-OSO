@@ -50,13 +50,15 @@ A systematic approach to allocating between stable market exposure (SPY) and hig
 ### Mathematical Formulation
 
 **Objective Function (Fitness Score):**
-$$\max_{w} \quad \underbrace{\mu_p}_{\text{mean return}} - \lambda_1 \underbrace{\sigma_p^2}_{\text{variance}} + \lambda_2 \underbrace{MDD_p}_{\text{max drawdown}} - \lambda_3 \underbrace{\|w_t - w_{t-1}\|_1}_{\text{turnover}}$$
+
+<img width="356" height="65" alt="image" src="https://github.com/user-attachments/assets/2d33d72f-cf65-4cf6-81b0-6fa08feef8ce" />
+
 
 Where:
 - $w \in \mathbb{R}^2$ = portfolio weights [SPY, IPO_INDEX]
 - $\mu_p = \frac{1}{T}\sum_{t=1}^{T} r_t^\top w$ = mean portfolio return over window
 - $\sigma_p^2 = \text{Var}(r^\top w)$ = portfolio variance
-- $MDD_p = \min_t \left(\frac{\text{cumret}_t}{\max_{s \leq t} \text{cumret}_s} - 1\right)$ = maximum drawdown (negative)
+- <img width="461" height="68" alt="image" src="https://github.com/user-attachments/assets/900185b2-6846-4284-be5b-1f0f29ac3030" />
 - $\lambda_1, \lambda_2, \lambda_3$ = penalty coefficients (hyperparameters)
 
 **Constraints:**
@@ -120,6 +122,11 @@ For each day t:
 
 **Key Finding**: OGD achieves **Sharpe 1.42** with only **-26% max drawdown**, trading off some upside for significantly better risk control compared to IPO-only (-73% drawdown).
 
+### Unexpected Challenges 
+- Accessing WRDS data -> transition to yfinance
+- Initial model did not use gradient descent
+- Initial model was only investing in one IPO
+
 ### Current Limitations
 1. **Shares outstanding approximation**: Using current shares for all historical dates
 2. **Limited IPO universe**: ~80 tickers vs hundreds of actual IPOs
@@ -139,6 +146,7 @@ For each day t:
 1. **Expand IPO universe**: Scrape comprehensive IPO data from SEC EDGAR or Nasdaq
 2. **Historical shares outstanding**: Use quarterly filings for accurate market caps
 3. **Add transaction costs**: Model bid-ask spreads and market impact
+4. **Add neural network**: Add a model architecture such as a GRU to predict future model weights/investment strategies 
 
 ### Technical Challenges
 1. **Survivorship bias correction**: Include delisted IPOs (requires premium data)
