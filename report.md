@@ -122,6 +122,11 @@ For each day t:
 
 **Key Finding**: OGD achieves **Sharpe 1.42** with only **-26% max drawdown**, trading off some upside for significantly better risk control compared to IPO-only (-73% drawdown).
 
+### Unexpected Challenges 
+- Accessing WRDS data -> transition to yfinance
+- Initial model did not use gradient descent
+- Initial model was only investing in one IPO
+
 ### Current Limitations
 1. **Shares outstanding approximation**: Using current shares for all historical dates
 2. **Limited IPO universe**: ~80 tickers vs hundreds of actual IPOs
