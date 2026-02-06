@@ -50,17 +50,15 @@ A systematic approach to allocating between stable market exposure (SPY) and hig
 ### Mathematical Formulation
 
 **Objective Function (Fitness Score):**
-$$
-\max_{w} \left(
-\mu_p - \lambda_1 \sigma_p^2 + \lambda_2 \text{MDD}_p - \lambda_3 \|w_t - w_{t-1}\|_1
-\right)
-$$
+
+<img width="356" height="65" alt="image" src="https://github.com/user-attachments/assets/2d33d72f-cf65-4cf6-81b0-6fa08feef8ce" />
+
 
 Where:
 - $w \in \mathbb{R}^2$ = portfolio weights [SPY, IPO_INDEX]
 - $\mu_p = \frac{1}{T}\sum_{t=1}^{T} r_t^\top w$ = mean portfolio return over window
 - $\sigma_p^2 = \text{Var}(r^\top w)$ = portfolio variance
-- $\MDD_p = \min_t \left(\frac{\text{cumret}_t}{\max_{s \leq t} \text{cumret}_s} - 1\right)$ = maximum drawdown (negative)
+- <img width="461" height="68" alt="image" src="https://github.com/user-attachments/assets/900185b2-6846-4284-be5b-1f0f29ac3030" />
 - $\lambda_1, \lambda_2, \lambda_3$ = penalty coefficients (hyperparameters)
 
 **Constraints:**
