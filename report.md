@@ -50,13 +50,20 @@ A systematic approach to allocating between stable market exposure (SPY) and hig
 ### Mathematical Formulation
 
 **Objective Function (Fitness Score):**
-$$\max_{w} \quad \underbrace{\mu_p}_{\text{mean return}} - \lambda_1 \underbrace{\sigma_p^2}_{\text{variance}} + \lambda_2 \underbrace{MDD_p}_{\text{max drawdown}} - \lambda_3 \underbrace{\|w_t - w_{t-1}\|_1}_{\text{turnover}}$$
+$$
+\max_{w} \; \big(
+\underbrace{\mu_p}_{\text{mean return}}
+- \lambda_1 \underbrace{\sigma_p^2}_{\text{variance}}
++ \lambda_2 \underbrace{\text{MDD}_p}_{\text{max drawdown}}
+- \lambda_3 \underbrace{\lVert w_t - w_{t-1} \rVert_1}_{\text{turnover}}
+\big)
+$$
 
 Where:
 - $w \in \mathbb{R}^2$ = portfolio weights [SPY, IPO_INDEX]
 - $\mu_p = \frac{1}{T}\sum_{t=1}^{T} r_t^\top w$ = mean portfolio return over window
 - $\sigma_p^2 = \text{Var}(r^\top w)$ = portfolio variance
-- $MDD_p = \min_t \left(\frac{\text{cumret}_t}{\max_{s \leq t} \text{cumret}_s} - 1\right)$ = maximum drawdown (negative)
+- $\MDD_p = \min_t \left(\frac{\text{cumret}_t}{\max_{s \leq t} \text{cumret}_s} - 1\right)$ = maximum drawdown (negative)
 - $\lambda_1, \lambda_2, \lambda_3$ = penalty coefficients (hyperparameters)
 
 **Constraints:**
@@ -139,6 +146,7 @@ For each day t:
 1. **Expand IPO universe**: Scrape comprehensive IPO data from SEC EDGAR or Nasdaq
 2. **Historical shares outstanding**: Use quarterly filings for accurate market caps
 3. **Add transaction costs**: Model bid-ask spreads and market impact
+4. **Add neural network:**: Add a model architecture such as a GRU to predict future model weights/investment strategies 
 
 ### Technical Challenges
 1. **Survivorship bias correction**: Include delisted IPOs (requires premium data)
