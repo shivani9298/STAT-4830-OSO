@@ -51,12 +51,9 @@ A systematic approach to allocating between stable market exposure (SPY) and hig
 
 **Objective Function (Fitness Score):**
 $$
-\max_{w} \; \big(
-\underbrace{\mu_p}_{\text{mean return}}
-- \lambda_1 \underbrace{\sigma_p^2}_{\text{variance}}
-+ \lambda_2 \underbrace{\text{MDD}_p}_{\text{max drawdown}}
-- \lambda_3 \underbrace{\lVert w_t - w_{t-1} \rVert_1}_{\text{turnover}}
-\big)
+\max_{w} \left(
+\mu_p - \lambda_1 \sigma_p^2 + \lambda_2 \text{MDD}_p - \lambda_3 \|w_t - w_{t-1}\|_1
+\right)
 $$
 
 Where:
@@ -146,7 +143,7 @@ For each day t:
 1. **Expand IPO universe**: Scrape comprehensive IPO data from SEC EDGAR or Nasdaq
 2. **Historical shares outstanding**: Use quarterly filings for accurate market caps
 3. **Add transaction costs**: Model bid-ask spreads and market impact
-4. **Add neural network:**: Add a model architecture such as a GRU to predict future model weights/investment strategies 
+4. **Add neural network**: Add a model architecture such as a GRU to predict future model weights/investment strategies 
 
 ### Technical Challenges
 1. **Survivorship bias correction**: Include delisted IPOs (requires premium data)
