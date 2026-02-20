@@ -77,18 +77,8 @@ Step-by-step notebook with problem setup, implementation, and validation.
 - **GRU** → last hidden state → **MLP** → **softmax** → weights on [market, IPO]
 - Output satisfies long-only, fully invested (simplex)
 
-### Objective (Loss to Minimize)
+<img width="476" height="209" alt="image" src="https://github.com/user-attachments/assets/0b7a71dd-3994-4263-9c6f-3381f50a23f9" />
 
-$$
-\mathcal{L} = -\mu_p + \lambda_{\text{cvar}} L_{\text{cvar}} + \lambda_{\text{vol}} \sigma_p^2 + \lambda_{\text{vol\_excess}} \max(0, \sigma_{\text{ann}} - \tau) + \lambda_{\text{turn}} \cdot \text{turnover} + \lambda_{\text{path}} \|w - w_{\text{prev}}\|^2
-$$
-
-- \(\mu_p\): mean portfolio return (maximize)
-- \(L_{\text{cvar}}\): smooth CVaR (tail risk)
-- \(\sigma_p^2\): variance
-- **Vol excess**: penalty when annualized vol exceeds target \(\tau\) (e.g., 25%)
-- **Turnover**: day-over-day weight changes
-- **Path**: weight stability
 
 ### Data Sources
 

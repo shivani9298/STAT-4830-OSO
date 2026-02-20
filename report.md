@@ -8,7 +8,8 @@ We optimize **daily portfolio weights** between two asset classes:
 1. **Market** – S&P 500 (82%) + Dow Jones (18%) proxy from CRSP (SPY/DIA)
 2. **IPO Index** – Market-cap weighted index of recent IPOs, each stock held for 180 trading days post-IPO
 
-The model outputs weights \(w \in [0,1]^2\) with \(w_1 + w_2 = 1\) via a **GRU neural network** that maps rolling windows of past returns to allocations. We minimize a differentiable loss that balances return, risk, and stability.
+The model outputs weights <img width="154" height="25" alt="image" src="https://github.com/user-attachments/assets/89bbd3a6-c97f-4382-b4d5-145b837e7c90" />
+ via a **GRU neural network** that maps rolling windows of past returns to allocations. We minimize a differentiable loss that balances return, risk, and stability.
 
 ### Why This Problem Matters
 
@@ -25,7 +26,8 @@ IPOs exhibit distinct return patterns: higher volatility (3–4× the market), m
 
 ### Constraints
 
-- **Long-only, fully invested**: \(w_i \geq 0\), \(\sum_i w_i = 1\) (softmax output)
+- **Long-only, fully invested**: <img width="99" height="22" alt="image" src="https://github.com/user-attachments/assets/b0b20b63-51ef-45b1-aaae-f90e9c1d42ff" />
+ (softmax output)
 - **No shorting or leverage**
 - **Daily rebalancing**: Weights produced daily for next-day execution
 
@@ -54,31 +56,20 @@ IPOs exhibit distinct return patterns: higher volatility (3–4× the market), m
 
 
 Where:
-- \(\mu_p = \mathbb{E}[r_p]\) – mean portfolio return (maximize via \(-\mu_p\))
-- \(\sigma_p^2\) – portfolio return variance
-- \(L_{\text{cvar}}\) – smooth CVaR (Expected Shortfall) at \(\alpha=0.05\), penalizing tail risk
-- \(L_{\text{vol\_excess}} = \max(0, \sigma_{\text{ann}} - \tau)\) – penalty when annualized vol exceeds target \(\tau\) (e.g., 25%)
-- \(\text{turnover} = \sum_i |w_i - w_{i,\text{prev}}|\)
-- \(w = \text{softmax}(\text{MLP}(\text{GRU}(x)))\) – neural network mapping
+<img width="410" height="188" alt="image" src="https://github.com/user-attachments/assets/7943f4b1-6444-4581-814d-03c758be62c7" />
+
 
 **Constraints:** Implicit via softmax (non-negative, sum to 1).
 
 ### Algorithm: GRU-Based Differentiable Optimization
 
-1. **Rolling windows**: For each date \(t\), form input \(X_t \in \mathbb{R}^{T \times F}\) (past \(T\) days of market/IPO returns and optional features).
-2. **Forward pass**: \(w_t = \text{model}(X_t)\); portfolio return \(r_{p,t} = w_t^\top r_t\).
-3. **Loss**: \(\mathcal{L}\) computed over batch, with \(w_{\text{prev}}\) from prior batch (or None for first).
-4. **Backprop**: \(\nabla_w \mathcal{L}\) via PyTorch autograd; update GRU + MLP parameters.
-5. **Validation**: Last 20% of dates held out; early stopping on validation loss.
+<img width="378" height="154" alt="image" src="https://github.com/user-attachments/assets/33755d0a-e779-4ee0-a192-30170040c1d2" />
+
 
 **Why GRU?** Sequence modeling captures temporal dependence in returns; the model can adapt allocations to recent momentum/volatility regimes. Differentiable end-to-end enables gradient-based tuning.
 
 ### PyTorch Implementation
-
-- **Model**: `AllocatorNet` – GRU(seq_len × n_features → hidden) → MLP → softmax(2)
-- **Loss**: `combined_loss()` in `src/losses.py` – modular, each term configurable via \(\lambda\)
-- **Training**: Adam, batch_size=32, patience=10, grad clipping
-- **Tuning**: Grid search over window_len, \(\lambda_{\text{vol}}\), \(\lambda_{\text{cvar}}\), \(\lambda_{\text{vol\_excess}}\), target_vol; optimize validation Sharpe
+<img width="415" height="138" alt="image" src="https://github.com/user-attachments/assets/0979c8b9-3951-4fdb-8c6c-ae84821e369f" />
 
 ### Validation Methods
 
