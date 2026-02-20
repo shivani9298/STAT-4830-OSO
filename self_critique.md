@@ -1,4 +1,4 @@
-# Self-Critique: Week 4 Deliverable
+# Self-Critique: Week 6 Deliverable
 
 ## OBSERVE: Critical Reading of the Report
 
