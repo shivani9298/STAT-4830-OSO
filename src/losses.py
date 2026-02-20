@@ -52,11 +52,34 @@ def loss_return_variance(port_ret: torch.Tensor) -> torch.Tensor:
     return port_ret.var(unbiased=False)
 
 
+def loss_vol_excess(
+    port_ret: torch.Tensor,
+    target_vol_annual: float = 0.20,
+    ann_factor: float = 252.0,
+) -> torch.Tensor:
+    """
+    Penalize when portfolio volatility exceeds target.
+    Uses realized daily std, annualized for comparison with target_vol_annual.
+    """
+    daily_std = port_ret.std(unbiased=False).clamp(min=1e-8)
+    ann_vol = daily_std * (ann_factor ** 0.5)
+    return torch.relu(ann_vol - target_vol_annual)
+
+
 def loss_weight_path(weights: torch.Tensor, weights_prev: Optional[torch.Tensor]) -> torch.Tensor:
     """Weight instability: sum of (w_t - w_prev)^2, averaged over batch."""
     if weights_prev is None:
         return torch.tensor(0.0, device=weights.device, dtype=weights.dtype)
     return ((weights - weights_prev) ** 2).sum(dim=-1).mean()
+
+
+def loss_diversification_min_weight(weights: torch.Tensor, min_weight: float = 0.1) -> torch.Tensor:
+    """
+    Penalize when the minimum asset weight is below min_weight.
+    Encourages holding both market and IPO instead of going all-in on one.
+    """
+    w_min = weights.min(dim=-1).values
+    return torch.relu(min_weight - w_min).mean()
 
 
 def combined_loss(
@@ -67,12 +90,20 @@ def combined_loss(
     lambda_turnover: float = 0.01,
     lambda_vol: float = 0.5,
     lambda_path: float = 0.01,
+    lambda_vol_excess: float = 0.0,
+    target_vol_annual: float = 0.20,
+    lambda_diversify: float = 0.0,
+    min_weight: float = 0.1,
     cvar_alpha: float = 0.05,
 ) -> tuple[torch.Tensor, dict]:
     """
     Combined loss L and component dict for logging.
 
     weights: (B, n_assets), returns: (B, n_assets)
+
+    Why 100% IPO before diversify penalty:
+    - Loss minimizes -mean_return + risk terms. IPO vastly outperformed market in-sample.
+    - No prior penalty for concentration, so optimal allocation = all-in on higher-return asset.
     """
     port_ret = portfolio_returns(weights, returns)
     L_mean = loss_mean_return(port_ret)
@@ -80,20 +111,26 @@ def combined_loss(
     L_cvar = -cvar_val  # penalize when CVaR is negative (bad tail)
     L_turn = loss_turnover(weights, weights_prev)
     L_vol = loss_return_variance(port_ret)
+    L_vol_excess = loss_vol_excess(port_ret, target_vol_annual=target_vol_annual)
     L_path = loss_weight_path(weights, weights_prev)
+    L_div = loss_diversification_min_weight(weights, min_weight=min_weight)
 
     L = (
         L_mean
         + lambda_cvar * L_cvar
         + lambda_turnover * L_turn
         + lambda_vol * L_vol
+        + lambda_vol_excess * L_vol_excess
         + lambda_path * L_path
+        + lambda_diversify * L_div
     )
     components = {
         "mean_return": -L_mean.item(),
         "cvar": cvar_val.item(),
         "turnover": L_turn.item(),
         "volatility": L_vol.item(),
+        "vol_excess": L_vol_excess.item(),
         "weight_path": L_path.item(),
+        "diversify": L_div.item(),
     }
     return L, components

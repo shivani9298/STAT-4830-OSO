@@ -1,170 +1,177 @@
-# Online Portfolio Optimization: S&P 500 vs IPO 180-Day Index
+# IPO Portfolio Optimization with GRU-Based Allocation
 
-## Problem Statement
+## Problem Statement (~1/2 page)
 
-### What We're Optimizing
+### What We Are Optimizing
+
 We optimize **daily portfolio weights** between two asset classes:
-1. **S&P 500** (SPY ETF) - Established large-cap US equities
-2. **IPO 180-Day Index** - A custom market-cap weighted index of recent IPOs where each stock exits after 180 trading days
+1. **Market** – S&P 500 (82%) + Dow Jones (18%) proxy from CRSP (SPY/DIA)
+2. **IPO Index** – Market-cap weighted index of recent IPOs, each stock held for 180 trading days post-IPO
 
-The goal is to maximize a **risk-adjusted fitness score** that balances returns against volatility, drawdown, and transaction costs.
+The model outputs weights \(w \in [0,1]^2\) with \(w_1 + w_2 = 1\) via a **GRU neural network** that maps rolling windows of past returns to allocations. We minimize a differentiable loss that balances return, risk, and stability.
 
 ### Why This Problem Matters
-IPOs represent a unique asset class with distinct return characteristics:
-- **High volatility**: IPO stocks exhibit 3-4x the volatility of the S&P 500
-- **Mean reversion**: Many IPOs experience significant price changes in their first 6 months
-- **Information asymmetry**: Early price discovery creates potential alpha opportunities
 
-A systematic approach to allocating between stable market exposure (SPY) and high-risk/high-reward IPO exposure could capture upside while managing downside risk.
+IPOs exhibit distinct return patterns: higher volatility (3–4× the market), mean reversion in the first 6 months, and information asymmetry. A systematic allocator that adjusts exposure based on recent history can improve risk-adjusted returns compared to static benchmarks. Retail and institutional investors can use this as a tilt signal (how much IPO vs market exposure).
 
 ### Success Metrics
+
 | Metric | Target | Rationale |
 |--------|--------|-----------|
-| Sharpe Ratio | > 1.0 | Risk-adjusted return above market |
-| Max Drawdown | < 30% | Capital preservation |
-| Annualized Return | > 15% | Beat SPY baseline |
-| Calmar Ratio | > 0.8 | Return per unit drawdown |
+| Sharpe Ratio | > 1.5 | Beat market-only risk-adjusted return |
+| Max Drawdown | < 15% | Capital preservation |
+| Annualized Return | > Market | Outperform SPY baseline |
+| Turnover | Low | Minimize transaction costs |
 
 ### Constraints
-- **Long-only**: Weights ∈ [0, 1], no shorting
-- **Fully invested**: Weights sum to 1 (simplex constraint)
-- **Daily rebalancing**: Practical for retail/institutional investors
-- **Transaction costs**: Implicit via turnover penalty
+
+- **Long-only, fully invested**: \(w_i \geq 0\), \(\sum_i w_i = 1\) (softmax output)
+- **No shorting or leverage**
+- **Daily rebalancing**: Weights produced daily for next-day execution
 
 ### Data Requirements
-- **Price data**: Daily adjusted close prices from Yahoo Finance (yfinance API)
-- **Shares outstanding**: For market-cap weighting (yfinance API)
-- **IPO dates**: Curated list of ~80 major IPOs from 2020-2024
-- **Time horizon**: 2020-01-01 to 2025-01-14 (~1,200 trading days)
+
+- **IPO prices & shares**: CRSP daily stock file (`crsp.dsf`) – split-adjusted prices, `shrout` for shares
+- **IPO dates**: SDC Platinum (`sdc.wrds_ni_details`) – `ipodate` for each IPO
+- **Market returns**: CRSP SPY and DIA
+- **Date range**: 2020-01-01 to 2024-12-31 (limited by CRSP lag)
 
 ### What Could Go Wrong
-1. **Survivorship bias**: Only including IPOs that still trade (excluding delistings)
-2. **Look-ahead bias**: Using current shares outstanding for historical market caps
-3. **Data quality**: Yahoo Finance data gaps or errors
-4. **Overfitting**: Hyperparameters tuned to historical data may not generalize
+
+1. **Survivorship bias**: IPO index only includes stocks still in CRSP; delistings excluded
+2. **Look-ahead**: Validation/test split is temporal; no future data in training
+3. **Overfitting**: Hyperparameters tuned on validation may not generalize
+4. **Regime shift**: 2020–2024 includes strong IPO performance; future regimes may differ
 
 ---
 
-## Technical Approach
+## Technical Approach (~1/2 page)
 
 ### Mathematical Formulation
 
-**Objective Function (Fitness Score):**
-
-<img width="356" height="65" alt="image" src="https://github.com/user-attachments/assets/2d33d72f-cf65-4cf6-81b0-6fa08feef8ce" />
-
+**Objective (minimize loss):**
+$$
+\mathcal{L} = -\mu_p + \lambda_{\text{cvar}} \cdot L_{\text{cvar}} + \lambda_{\text{vol}} \cdot \sigma_p^2 + \lambda_{\text{vol\_excess}} \cdot L_{\text{vol\_excess}} + \lambda_{\text{turn}} \cdot \text{turnover} + \lambda_{\text{path}} \cdot \|w - w_{\text{prev}}\|^2
+$$
 
 Where:
-- $w \in \mathbb{R}^2$ = portfolio weights [SPY, IPO_INDEX]
-- $\mu_p = \frac{1}{T}\sum_{t=1}^{T} r_t^\top w$ = mean portfolio return over window
-- $\sigma_p^2 = \text{Var}(r^\top w)$ = portfolio variance
-- <img width="461" height="68" alt="image" src="https://github.com/user-attachments/assets/900185b2-6846-4284-be5b-1f0f29ac3030" />
-- $\lambda_1, \lambda_2, \lambda_3$ = penalty coefficients (hyperparameters)
+- \(\mu_p = \mathbb{E}[r_p]\) – mean portfolio return (maximize via \(-\mu_p\))
+- \(\sigma_p^2\) – portfolio return variance
+- \(L_{\text{cvar}}\) – smooth CVaR (Expected Shortfall) at \(\alpha=0.05\), penalizing tail risk
+- \(L_{\text{vol\_excess}} = \max(0, \sigma_{\text{ann}} - \tau)\) – penalty when annualized vol exceeds target \(\tau\) (e.g., 25%)
+- \(\text{turnover} = \sum_i |w_i - w_{i,\text{prev}}|\)
+- \(w = \text{softmax}(\text{MLP}(\text{GRU}(x)))\) – neural network mapping
 
-**Constraints:**
-$$w_i \geq 0, \quad \sum_i w_i = 1 \quad \text{(probability simplex)}$$
+**Constraints:** Implicit via softmax (non-negative, sum to 1).
 
-### Algorithm: Online Gradient Descent (OGD)
+### Algorithm: GRU-Based Differentiable Optimization
 
-We use **projected gradient descent** with adaptive learning rates:
+1. **Rolling windows**: For each date \(t\), form input \(X_t \in \mathbb{R}^{T \times F}\) (past \(T\) days of market/IPO returns and optional features).
+2. **Forward pass**: \(w_t = \text{model}(X_t)\); portfolio return \(r_{p,t} = w_t^\top r_t\).
+3. **Loss**: \(\mathcal{L}\) computed over batch, with \(w_{\text{prev}}\) from prior batch (or None for first).
+4. **Backprop**: \(\nabla_w \mathcal{L}\) via PyTorch autograd; update GRU + MLP parameters.
+5. **Validation**: Last 20% of dates held out; early stopping on validation loss.
 
-```
-For each day t:
-    1. Extract trailing window of returns R[t-W:t]
-    2. Compute gradient of fitness w.r.t. weights
-    3. Update: w_new = w - lr * grad
-    4. Project onto simplex: w = proj_simplex(w_new)
-    5. Apply weights to next day's returns
-```
+**Why GRU?** Sequence modeling captures temporal dependence in returns; the model can adapt allocations to recent momentum/volatility regimes. Differentiable end-to-end enables gradient-based tuning.
 
-**Why OGD?**
-- Online learning adapts to regime changes (bull/bear markets)
-- No assumptions about return distributions
-- Differentiable objective enables PyTorch autograd
-- Simplex projection ensures valid portfolio weights
+### PyTorch Implementation
 
-### PyTorch Implementation Strategy
-- **Autograd**: Compute gradients automatically via `loss.backward()`
-- **Tensor operations**: Vectorized return calculations
-- **Custom projection**: Euclidean projection onto simplex (O(n log n))
+- **Model**: `AllocatorNet` – GRU(seq_len × n_features → hidden) → MLP → softmax(2)
+- **Loss**: `combined_loss()` in `src/losses.py` – modular, each term configurable via \(\lambda\)
+- **Training**: Adam, batch_size=32, patience=10, grad clipping
+- **Tuning**: Grid search over window_len, \(\lambda_{\text{vol}}\), \(\lambda_{\text{cvar}}\), \(\lambda_{\text{vol\_excess}}\), target_vol; optimize validation Sharpe
 
 ### Validation Methods
-1. **Walk-forward testing**: Train on [t-W, t], test on t+1 (no look-ahead)
-2. **Benchmark comparison**: OGD vs Equal Weight vs SPY-only
-3. **Rolling metrics**: 126-day rolling Sharpe, volatility, drawdown
-4. **Sensitivity analysis**: Vary hyperparameters (λ₁, λ₂, λ₃, W, lr)
+
+- **Time-series split**: Last 20% of dates for validation
+- **Metrics**: Validation Sharpe, max drawdown, avg IPO weight
+- **Baselines**: Market-only, IPO-only, Equal 50/50
+
+### Resource Requirements
+
+- **WRDS subscription** (CRSP, SDC)
+- **Runtime**: ~2–3 min per training run; ~2–3 hr for 32-config grid search
+- **Memory**: <2 GB
 
 ---
 
-## Initial Results
+## Initial Results (~1/2 page)
 
 ### Evidence Implementation Works
 
-**IPO Index Construction:**
-- Successfully built market-cap weighted index with ~80 IPO tickers
-- Average 8.5 stocks in index at any time
-- Average total market cap: $150.8B
-- 1,208 valid trading days with both assets
+- Data pipeline: SDC + CRSP loads 770K rows, 1,136 IPO tickers, 1,248 days of IPO index returns
+- Training converges in 11–14 epochs with early stopping
+- Weights satisfy simplex constraint; no NaN/Inf
+- Loss curve (train/val) saved to `figures/ipo_optimizer_loss.png`
 
-**OGD Optimization:**
-- Walk-forward optimization completed over full period
-- Weights evolve smoothly (no erratic behavior)
-- Simplex constraint satisfied at all times
+### Performance Metrics (Validation Period)
 
-### Performance Metrics (2020-2025)
+| Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max DD |
+|----------|-------------|-------------|----------|--------|--------|
+| **Model Portfolio** | **34.39%** | **39.44%** | 13.52% | **2.53** | **-7.66%** |
+| Market only | 17.26% | 19.62% | 12.22% | 1.53 | -7.89% |
+| IPO only | 166.59% | 201.35% | 30.68% | 3.75 | -10.08% |
+| Equal 50/50 | 78.16% | 91.50% | 19.26% | 3.47 | -7.20% |
 
-| Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max DD | Calmar |
-|----------|-------------|-------------|----------|--------|--------|--------|
-| **OGD Portfolio** | **193.5%** | **28.5%** | 20.1% | **1.42** | **-26.2%** | 1.09 |
-| Equal Weight | 577.7% | 56.2% | 35.0% | 1.60 | -51.3% | 1.09 |
-| S&P 500 Only | 86.1% | 15.6% | 16.1% | 0.97 | -24.5% | 0.64 |
-| IPO Index Only | 1699.3% | 96.0% | 61.4% | 1.56 | -73.1% | 1.31 |
+**Summary**: Model allocates ~16% to IPO on average, achieving higher Sharpe (2.53) and lower drawdown (-7.66%) than market-only, while reducing volatility vs IPO-only. Volatility penalty successfully limits IPO tilt.
 
-**Key Finding**: OGD achieves **Sharpe 1.42** with only **-26% max drawdown**, trading off some upside for significantly better risk control compared to IPO-only (-73% drawdown).
+### Test Case Results
 
-### Unexpected Challenges 
-- Accessing WRDS data -> transition to yfinance
-- Initial model did not use gradient descent
-- Initial model was only investing in one IPO
+- **Hyperparameter tuning**: 32 configs; best: window_len=126, \(\lambda_{\text{cvar}}=1.0\), \(\lambda_{\text{vol\_excess}}=0.5\), target_vol=0.25
+- **Avg turnover**: ~1.3e-5 (negligible; model outputs near-constant weights)
+- **Policy output**: "Model suggests moderate or low IPO allocation"; position scale 0.32
 
 ### Current Limitations
-1. **Shares outstanding approximation**: Using current shares for all historical dates
-2. **Limited IPO universe**: ~80 tickers vs hundreds of actual IPOs
-3. **No transaction costs**: Turnover penalty is proxy, not actual costs
-4. **Single hyperparameter set**: Not yet optimized across regimes
+
+1. **Near-static weights**: Model learns ~84% market / 16% IPO with minimal day-to-day variation; limited tactical tilting
+2. **No transaction costs**: Turnover is tiny; real costs not modeled
+3. **Validation only**: No true out-of-sample test period (e.g., 2025)
+4. **Display**: Avg turnover rounds to 0.0000 (format precision)
 
 ### Resource Usage
-- **Runtime**: ~3 minutes for full backtest (fetching data + optimization)
-- **Memory**: <1GB (pandas DataFrames fit comfortably)
-- **API calls**: ~85 Yahoo Finance requests (one per ticker)
+
+- Single run: ~2.5 min (WRDS + training)
+- Tuning (32 configs): ~2–3 hr
+- Memory: <2 GB
+
+### Unexpected Challenges
+
+- Without volatility/diversification penalties, model went 100% IPO (in-sample optimal); required \(\lambda_{\text{vol\_excess}}\) to get balanced allocation
+- WRDS connection and data volume add latency vs local CSV
+- Some datasets (e.g., Compustat) replaced by CRSP for consistency
 
 ---
 
-## Next Steps
+## Next Steps (~1/2 page)
 
 ### Immediate Improvements
-1. **Expand IPO universe**: Scrape comprehensive IPO data from SEC EDGAR or Nasdaq
-2. **Historical shares outstanding**: Use quarterly filings for accurate market caps
-3. **Add transaction costs**: Model bid-ask spreads and market impact
-4. **Add neural network**: Add a model architecture such as a GRU to predict future model weights/investment strategies 
+
+1. **True out-of-sample test**: Reserve final months (e.g., 2025) for test; report metrics only on that period
+2. **Display turnover**: Use `.6f` or scientific notation so tiny turnover is visible
+3. **Transaction costs**: Add explicit cost term (e.g., bps per unit turnover) to loss
 
 ### Technical Challenges
-1. **Survivorship bias correction**: Include delisted IPOs (requires premium data)
-2. **Hyperparameter optimization**: Grid search or Bayesian optimization for λ values
-3. **Regime detection**: Adapt parameters for bull/bear/volatile markets
+
+1. **Dynamic allocation**: Increase model capacity or features so weights respond more to regime; current GRU may be underfitting to time variation
+2. **Survivorship bias**: Include delisted IPOs if data allows; otherwise document limitation
+3. **Hyperparameter robustness**: Sensitivity analysis; avoid overfitting to validation
 
 ### Questions Needing Help
-1. Is there a free data source for historical IPO filings with shares outstanding?
-2. How to properly handle delisted stocks in backtesting?
-3. Should we add a third asset class (bonds/cash) for risk-off periods?
 
-### Alternative Approaches to Try
-1. **Reinforcement Learning**: Replace OGD with PPO/SAC for weight allocation
-2. **Factor-based IPO selection**: Use momentum/value/quality factors within IPO universe
-3. **Dynamic holding period**: Optimize exit timing instead of fixed 180 days
+1. Best practice for temporal train/val/test splits with limited data (2020–2024)?
+2. How to model transaction costs in a differentiable way for gradient-based optimization?
+3. Should we add regime indicators (VIX, momentum) as features?
+
+### Alternative Approaches
+
+1. **Reinforcement learning**: PPO/SAC for sequential allocation
+2. **Ensemble**: Combine GRU with simple rule (e.g., vol target)
+3. **Larger IPO universe**: Broader SDC filter; factor-based IPO selection
+4. **Online learning**: Update model incrementally as new data arrives
 
 ### What We've Learned
-1. IPOs are extremely volatile (3-4x SPY) but offer high returns in aggregate
-2. Market-cap weighting reduces impact of small, illiquid names
-3. OGD effectively shifts to defensive (SPY) during IPO drawdowns
-4. The 180-day holding period captures most of the "IPO pop" while avoiding long-term underperformance
+
+1. Institutional data (WRDS) enables realistic IPO index construction at scale
+2. Pure return maximization leads to 100% IPO; risk penalties are essential for diversification
+3. GRU produces stable weights; may need architectural changes for more tactical tilting
+4. Volatility penalty (target vol cap) effectively limits IPO exposure and improves drawdown

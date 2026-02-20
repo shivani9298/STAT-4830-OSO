@@ -1,56 +1,51 @@
-# Self-Critique: Week 3 Deliverable
+# Self-Critique: Week 4 Deliverable
 
-## OBSERVE: Initial Assessment
+## OBSERVE: Critical Reading of the Report
 
-After reviewing our report and implementation:
-- The code runs end-to-end and produces reasonable results
-- Mathematical formulation is present but could be more rigorous
-- Data sources are real (Yahoo Finance) but have limitations
-- Performance metrics show promising results (Sharpe 1.42)
+After reviewing the report and running the implementation:
+- The GRU-based allocator runs end-to-end and produces valid weights
+- Mathematical formulation is present; loss terms are implemented and tunable
+- Real WRDS data (SDC + CRSP) replaces prior yfinance setup
+- Validation metrics (Sharpe 2.53, MaxDD -7.66%) are strong but limited to in-sample/validation period
+- Weights are nearly constant (~84% market, ~16% IPO); little tactical tilting
+- Turnover displays as 0.0000 due to formatting; actual value ~1e-5
 
 ---
 
 ## ORIENT: Analysis
 
-### Strengths (3 key points)
+### Strengths (Max 3)
 
-1. **Working Implementation**: The OGD optimizer runs successfully with walk-forward backtesting, producing valid portfolio weights that sum to 1 and are non-negative.
+1. **Rigorous Data Pipeline**: Uses institutional WRDS data (SDC for IPO dates, CRSP for prices and market returns) with explicit handling of split-adjusted prices and shares. Data volume (770K rows, 1,136 tickers) and date alignment are well managed.
 
-2. **Real Data Pipeline**: Uses actual market data from Yahoo Finance rather than synthetic data, making results more credible and reproducible.
+2. **Differentiable, Modular Loss**: The objective function is clearly decomposed (mean return, CVaR, variance, vol excess, turnover, path stability) with configurable hyperparameters. This supports interpretability and systematic tuning.
 
-3. **Clear Risk Management**: The fitness function explicitly penalizes variance, drawdown, and turnover - addressing multiple dimensions of portfolio risk.
+3. **Evidence of Validation**: Hyperparameter grid search (32 configs) optimizes validation Sharpe; early stopping prevents overfitting; baseline comparisons (market, IPO-only, 50/50) provide context.
 
-### Areas for Improvement (3 key points)
+### Areas for Improvement (Max 3)
 
-1. **Data Quality Issues**: Using current shares outstanding for all historical dates introduces look-ahead bias. The IPO universe is limited (~40 stocks) and suffers from survivorship bias (excludes delisted IPOs).
+1. **No True Out-of-Sample Test**: All reported metrics are on the validation set (last 20% of 2020–2024). There is no held-out test period (e.g., 2025 or a fixed future window) to assess generalization. Validation Sharpe can overstate performance.
 
-2. **Hyperparameter Justification**: The penalty coefficients (λ₁=20, λ₂=8, λ₃=0.15) were chosen heuristically without systematic optimization or sensitivity analysis.
+2. **Near-Constant Weights Undercut “Optimization”**: The model outputs almost identical weights every day. The GRU may be underfitting to time-varying signals, or the loss heavily penalizes turnover/path instability. The value of a neural allocator over a simple static 84/16 rule is unclear.
 
-3. **Validation Gaps**: No out-of-sample test period, no statistical significance tests for performance differences, no comparison to standard benchmarks (e.g., 60/40 portfolio).
+3. **Mathematical Formulation Incomplete in Report**: The CVaR smoothing and softmax mapping are mentioned but not fully specified. A reader cannot reproduce the objective without reading the code. Equations for \(L_{\text{cvar}}\) and the GRU → MLP → softmax architecture should be written explicitly.
 
 ### Critical Risks/Assumptions
 
-The biggest risk is **overfitting to the 2020-2021 IPO boom**. This period had unprecedented IPO activity and returns (RIVN, ABNB, COIN) that may not repeat. The model's shift to 100% SPY in 2024-2025 suggests it learned regime-specific patterns rather than generalizable allocation rules. Additionally, the assumption that market-cap weighting with current shares is valid for historical periods could significantly bias market cap calculations.
+**Overfitting to validation**: The best config is chosen to maximize validation Sharpe. Without a true test set, we do not know if 2.53 Sharpe generalizes. The 2020–2024 period (including COVID and IPO boom) may not represent future regimes. We assume WRDS data is accurate and that our IPO index construction (180 days, market-cap weighted) is a reasonable proxy for investable IPO exposure—both are material assumptions.
 
 ---
 
 ## DECIDE: Concrete Next Actions
 
-1. **Update Model Architecture** (Week 5): Add a model architecture such as a GRU to predict future model weights/investment strategies
+1. **Introduce a True Test Split**: Reserve the last 3–6 months of data (or 2025 when available) as a never-touched test set. Train and tune only on train/validation; report Sharpe, return, drawdown, and turnover exclusively on the test period. Document the split dates clearly in the report.
 
-2. **Add Hyperparameter Optimization** (Week 5): Implement grid search or Bayesian optimization for λ values using a validation set (e.g., 2020-2022 train, 2023 validate, 2024+ test). Document sensitivity of results to parameter choices.
+2. **Diagnose Why Weights Are Static**: Add logging of weight variance over time and correlation with features (e.g., rolling vol, momentum). If the model is collapsing to constants, experiment with (a) reducing turnover/path penalties, (b) adding features that vary more, or (c) increasing model capacity. Document findings in the report.
 
-3. **Expand Validation** (Week 5): Add statistical tests, include traditional benchmarks, and create a proper train/validation/test split to detect overfitting.
+3. **Complete Mathematical Specification in Report**: Add explicit formulas for the CVaR approximation (soft sorting, temperature), the GRU/MLP architecture, and the softmax output. Include a small diagram or pseudocode so the approach is reproducible from the report alone.
 
 ---
 
 ## ACT: Resource Needs
-We plan to use Scikit-optimize for Bayesian hyperparameter tuning and expand the dataset to include more assets, longer history, and macro features to reduce overfitting. Key knowledge gaps include implementing GRU sequence models correctly in PyTorch and selecting appropriate time-series statistical tests (forecast comparison and Sharpe significance). Major blockers are limited or slow access to WRDS data and long runtimes for hyperparameter search over multi-year daily data, which may require GPU use and search-space reduction. 
 
-We plan on referencing this article: https://sharmasaravanan.medium.com/time-series-forecasting-using-gru-a-step-by-step-guide-b537dc8dcfba
-https://wrds-www.wharton.upenn.edu/pages/classroom/accessing-data-via-the-wrds-api-and-excel/
-
-We would also need a CRSP subscription as well to use the WRDS api.
-
-
-
+To implement these actions, we need: (1) A clear date boundary for the test set (e.g., "2025-01-01 onward" or "last 60 trading days") and a script change to enforce it; (2) Basic feature analysis (e.g., pandas rolling stats) to inspect input variance; (3) Optional: learning PyTorch hooks or activation logging if we need to debug the GRU hidden states. Blocker: CRSP data for 2025 may not be available yet; we may need to use the last portion of 2024 as a proxy test period and note this limitation.
