@@ -1,0 +1,202 @@
+{
+  "config": {
+    "n_epochs": 30,
+    "n_train": 25,
+    "n_val": 15,
+    "lr": 0.001,
+    "lr_schedule": "constant",
+    "batch_size": 16,
+    "seed": 0
+  },
+  "best_epoch_by_val": 9,
+  "best_val_score": 0.068017,
+  "final": {
+    "epoch": 30,
+    "loss": -0.00439,
+    "train_score": -0.439837,
+    "val_score": -0.296317
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "loss": -0.004477,
+      "train_score": -0.66026,
+      "val_score": -0.627046
+    },
+    {
+      "epoch": 2,
+      "loss": -0.008812,
+      "train_score": -0.748436,
+      "val_score": -0.279188
+    },
+    {
+      "epoch": 3,
+      "loss": 0.005465,
+      "train_score": -0.524447,
+      "val_score": -0.821218
+    },
+    {
+      "epoch": 4,
+      "loss": -0.008311,
+      "train_score": -0.366118,
+      "val_score": -0.522779
+    },
+    {
+      "epoch": 5,
+      "loss": -0.015744,
+      "train_score": -0.913095,
+      "val_score": -0.01248
+    },
+    {
+      "epoch": 6,
+      "loss": -0.008603,
+      "train_score": -0.357075,
+      "val_score": -0.280088
+    },
+    {
+      "epoch": 7,
+      "loss": -0.018683,
+      "train_score": -0.510369,
+      "val_score": -0.791707
+    },
+    {
+      "epoch": 8,
+      "loss": -0.006611,
+      "train_score": -0.950425,
+      "val_score": -0.528271
+    },
+    {
+      "epoch": 9,
+      "loss": -0.010553,
+      "train_score": -0.704454,
+      "val_score": 0.068017
+    },
+    {
+      "epoch": 10,
+      "loss": -0.008081,
+      "train_score": -0.7333,
+      "val_score": -0.936024
+    },
+    {
+      "epoch": 11,
+      "loss": -0.004058,
+      "train_score": -1.233516,
+      "val_score": -0.004404
+    },
+    {
+      "epoch": 12,
+      "loss": -0.031249,
+      "train_score": -0.325151,
+      "val_score": -0.856298
+    },
+    {
+      "epoch": 13,
+      "loss": -0.004675,
+      "train_score": -0.777448,
+      "val_score": 0.013637
+    },
+    {
+      "epoch": 14,
+      "loss": -0.001678,
+      "train_score": -0.498313,
+      "val_score": -0.85564
+    },
+    {
+      "epoch": 15,
+      "loss": -0.004159,
+      "train_score": -0.815742,
+      "val_score": -0.779892
+    },
+    {
+      "epoch": 16,
+      "loss": 0.008866,
+      "train_score": -1.330212,
+      "val_score": -0.39398
+    },
+    {
+      "epoch": 17,
+      "loss": 0.000986,
+      "train_score": -0.66602,
+      "val_score": -0.298663
+    },
+    {
+      "epoch": 18,
+      "loss": -0.020809,
+      "train_score": -0.578524,
+      "val_score": -0.467884
+    },
+    {
+      "epoch": 19,
+      "loss": -0.005578,
+      "train_score": -0.613947,
+      "val_score": -0.654774
+    },
+    {
+      "epoch": 20,
+      "loss": -0.002622,
+      "train_score": -0.409012,
+      "val_score": -0.696889
+    },
+    {
+      "epoch": 21,
+      "loss": -0.001668,
+      "train_score": -0.337921,
+      "val_score": -0.743812
+    },
+    {
+      "epoch": 22,
+      "loss": -0.003818,
+      "train_score": -0.303934,
+      "val_score": -0.228478
+    },
+    {
+      "epoch": 23,
+      "loss": -0.003845,
+      "train_score": -0.118959,
+      "val_score": 0.018877
+    },
+    {
+      "epoch": 24,
+      "loss": -0.018641,
+      "train_score": -0.810685,
+      "val_score": -1.000951
+    },
+    {
+      "epoch": 25,
+      "loss": -0.010281,
+      "train_score": -0.168522,
+      "val_score": -0.320369
+    },
+    {
+      "epoch": 26,
+      "loss": -0.010829,
+      "train_score": -0.242306,
+      "val_score": -0.005321
+    },
+    {
+      "epoch": 27,
+      "loss": -0.005204,
+      "train_score": -0.410796,
+      "val_score": -1.006173
+    },
+    {
+      "epoch": 28,
+      "loss": 0.003862,
+      "train_score": -0.395193,
+      "val_score": -0.865916
+    },
+    {
+      "epoch": 29,
+      "loss": -0.013111,
+      "train_score": -0.181354,
+      "val_score": -0.125381
+    },
+    {
+      "epoch": 30,
+      "loss": -0.00439,
+      "train_score": -0.439837,
+      "val_score": -0.296317
+    }
+  ],
+  "interpretation": "Train score is negative: costs/risk penalties outweigh returns on training data (common with small data or strong penalties).\nBest validation score (0.0680) at epoch 9 is positive.\nHigh validation variance across epochs: consider more epochs or more validation data.\nScore = E[R] - \u03bb*CVaR - \u03ba*Cost - \u03bc*MDD; negative means risk/costs dominate."
+}

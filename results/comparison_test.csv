@@ -1,0 +1,2 @@
+model,total_return,ann_return,volatility,sharpe,max_drawdown,excess_spy,excess_dji
+PolicyParams (Rule),0.03388936634685935,0.010920314339495536,0.014700230962877639,-1.9781788282061101,0.0,0.0,0.0
