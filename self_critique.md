@@ -14,7 +14,7 @@ After reviewing the report and running the implementation:
 
 ## ORIENT: Analysis
 
-### Strengths (Max 3)
+### Strengths 
 
 1. **Rigorous Data Pipeline**: Uses institutional WRDS data (SDC for IPO dates, CRSP for prices and market returns) with explicit handling of split-adjusted prices and shares. Data volume (770K rows, 1,136 tickers) and date alignment are well managed.
 
@@ -22,7 +22,7 @@ After reviewing the report and running the implementation:
 
 3. **Evidence of Validation**: Hyperparameter grid search (32 configs) optimizes validation Sharpe; early stopping prevents overfitting; baseline comparisons (market, IPO-only, 50/50) provide context.
 
-### Areas for Improvement (Max 3)
+### Areas for Improvement 
 
 1. **No True Out-of-Sample Test**: All reported metrics are on the validation set (last 20% of 2020–2024). There is no held-out test period (e.g., 2025 or a fixed future window) to assess generalization. Validation Sharpe can overstate performance.
 
@@ -38,7 +38,7 @@ After reviewing the report and running the implementation:
 
 ## DECIDE: Concrete Next Actions
 
-1. **Introduce a True Test Split**: Reserve the last 3–6 months of data (or 2025 when available) as a never-touched test set. Train and tune only on train/validation; report Sharpe, return, drawdown, and turnover exclusively on the test period. Document the split dates clearly in the report.
+1. **Introduce a True Test Split**: Reserve the last 3–6 months of data (or 2025 when available) as a never-touched test set. Pull 2025 data from yfinance to bridge the lack of data gap. Train and tune only on train/validation; report Sharpe, return, drawdown, and turnover exclusively on the test period. Document the split dates clearly in the report.
 
 2. **Diagnose Why Weights Are Static**: Add logging of weight variance over time and correlation with features (e.g., rolling vol, momentum). If the model is collapsing to constants, experiment with (a) reducing turnover/path penalties, (b) adding features that vary more, or (c) increasing model capacity. Document findings in the report.
 

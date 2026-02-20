@@ -1,6 +1,6 @@
 # IPO Portfolio Optimization with GRU-Based Allocation
 
-## Problem Statement (~1/2 page)
+## Problem Statement
 
 ### What We Are Optimizing
 
@@ -47,7 +47,7 @@ IPOs exhibit distinct return patterns: higher volatility (3–4× the market), m
 
 ---
 
-## Technical Approach (~1/2 page)
+## Technical Approach
 
 ### Mathematical Formulation
 
@@ -85,7 +85,7 @@ Where:
 
 ---
 
-## Initial Results (~1/2 page)
+## Initial Results
 
 ### Evidence Implementation Works
 
@@ -107,7 +107,8 @@ Where:
 
 ### Test Case Results
 
-- **Hyperparameter tuning**: 32 configs; best: window_len=126, \(\lambda_{\text{cvar}}=1.0\), \(\lambda_{\text{vol\_excess}}=0.5\), target_vol=0.25
+- **Hyperparameter tuning**: <img width="392" height="22" alt="image" src="https://github.com/user-attachments/assets/63785db0-c605-430c-93e4-849b6aa78b23" />
+
 - **Avg turnover**: ~1.3e-5 (negligible; model outputs near-constant weights)
 - **Policy output**: "Model suggests moderate or low IPO allocation"; position scale 0.32
 
@@ -132,7 +133,7 @@ Where:
 
 ---
 
-## Next Steps (~1/2 page)
+## Next Steps 
 
 ### Immediate Improvements
 
