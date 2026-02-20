@@ -107,7 +107,8 @@ Where:
 
 ### Test Case Results
 
-- **Hyperparameter tuning**: 32 configs; best: window_len=126, \(\lambda_{\text{cvar}}=1.0\), \(\lambda_{\text{vol\_excess}}=0.5\), target_vol=0.25
+- **Hyperparameter tuning**: <img width="392" height="22" alt="image" src="https://github.com/user-attachments/assets/63785db0-c605-430c-93e4-849b6aa78b23" />
+
 - **Avg turnover**: ~1.3e-5 (negligible; model outputs near-constant weights)
 - **Policy output**: "Model suggests moderate or low IPO allocation"; position scale 0.32
 
