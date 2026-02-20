@@ -1,116 +1,105 @@
-# Online Portfolio Optimization: S&P 500 vs IPO 180-Day Index
+# IPO Portfolio Optimizer – GRU-Based Allocation
 
 **STAT 4830 | Spring 2026 | University of Pennsylvania**
 
-This project uses **Online Gradient Descent (OGD)** to dynamically allocate a portfolio between the S&P 500 (SPY ETF) and a custom market-cap weighted index of recent IPOs. The optimizer maximizes a risk-adjusted fitness score that balances returns against volatility, drawdown, and transaction costs.
+A **GRU neural network** allocates daily portfolio weights between a **market index** (S&P 500 + Dow proxy) and a **custom IPO index** (market-cap weighted, 180-day post-IPO). The model minimizes a differentiable loss that balances return, volatility, CVaR, and turnover. Data is pulled from **WRDS** (SDC + CRSP).
 
-## Key Results (2020--2025 Backtest)
+## Key Results (Validation Period, 2020–2024)
 
-| Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max Drawdown | Calmar |
-|----------|-------------|-------------|----------|--------|--------------|--------|
-| **OGD Portfolio** | **193.5%** | **28.5%** | 20.1% | **1.42** | **-26.2%** | **1.09** |
-| Equal Weight | 577.7% | 56.2% | 35.0% | 1.60 | -51.3% | 1.09 |
-| S&P 500 Only | 86.1% | 15.6% | 16.1% | 0.97 | -24.5% | 0.64 |
-| IPO Index Only | 1699.3% | 96.0% | 61.4% | 1.56 | -73.1% | 1.31 |
+| Strategy      | Total Return | Ann. Return | Ann. Vol | Sharpe | Max Drawdown |
+|--------------|--------------|-------------|----------|--------|--------------|
+| **Model**    | **34.39%**   | **39.44%**  | 13.52%   | **2.53** | **-7.66%** |
+| Market only  | 17.26%       | 19.62%      | 12.22%   | 1.53   | -7.89%       |
+| IPO only     | 166.59%      | 201.35%     | 30.68%   | 3.75   | -10.08%      |
+| Equal 50/50  | 78.16%       | 91.50%      | 19.26%   | 3.47   | -7.20%       |
 
-OGD achieves a Sharpe ratio of 1.42 with only -26% max drawdown, significantly improving risk control compared to IPO-only exposure (-73% drawdown).
+The model allocates ~16% to the IPO index on average, achieving **Sharpe 2.53** and **Max DD -7.66%**, outperforming market-only (Sharpe 1.53) with controlled volatility.
 
 ---
 
-## Replication Guide
+## Quick Start
 
 ### Prerequisites
 
 - Python 3.10+
-- pip
-- Git
-- Internet connection (for Yahoo Finance data)
+- **WRDS account** (CRSP + SDC)
+- `WRDS_USERNAME` and `WRDS_PASSWORD` environment variables (or interactive login)
 
-### 1. Clone the Repository
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/shivani9298/STAT-4830-OSO.git
 cd STAT-4830-OSO
+pip install torch numpy pandas matplotlib wrds
 ```
 
-### 2. Install Dependencies
+### 2. Run the Optimizer
 
 ```bash
-pip install torch numpy pandas yfinance matplotlib pytest
+python run_ipo_optimizer_wrds.py
 ```
 
-Optional (for future hyperparameter optimization work):
-```bash
-pip install scipy scikit-optimize optuna
-```
+This script:
 
-### 3. Run the Main Notebook
+1. Connects to WRDS and loads IPO data from SDC + CRSP
+2. Builds the IPO index and market returns
+3. Trains the GRU allocator with the best hyperparameters (or defaults)
+4. Exports weights to `results/ipo_optimizer_weights.csv` and a summary to `results/ipo_optimizer_summary.txt`
+5. Saves a loss plot to `figures/ipo_optimizer_loss.png`
 
-Open and run the primary implementation notebook:
+**Runtime**: ~2–3 minutes.
 
-```bash
-jupyter notebook notebooks/week3_implementation.ipynb
-```
-
-Run all cells in order. The notebook will:
-1. Fetch daily price data and shares outstanding for ~80 IPO tickers and SPY from Yahoo Finance (~1-2 min)
-2. Construct the market-cap weighted 180-day IPO index
-3. Run the OGD walk-forward backtest over ~1,200 trading days (~3 min)
-4. Print performance metrics and generate visualizations
-
-**Total runtime**: ~5 minutes on a standard laptop. No GPU required.
-
-### 4. Run Tests
+### 3. Hyperparameter Tuning (Optional)
 
 ```bash
-pytest tests/test_basic.py -v
+python tune_hyperparameters_wrds.py
 ```
 
-This runs 21 unit tests covering simplex projection, max drawdown computation, the OGD allocator, and fitness score behavior.
+Grid search over window length, volatility penalties, CVaR, etc. Saves the best config to `results/ipo_optimizer_best_config.json`; `run_ipo_optimizer_wrds.py` will use it on the next run.
 
-### 5. Explore Pre-Computed Results
+**Runtime**: ~1–3 hours depending on grid size.
 
-If you want to inspect results without re-running the notebook, pre-computed outputs are in `results/`:
+### 4. Jupyter Notebook
 
-| File | Description |
-|------|-------------|
-| `week3_metrics.csv` | Performance metrics for all strategies |
-| `week3_returns.csv` | Daily portfolio returns |
-| `week3_weights.csv` | Daily OGD allocation weights (SPY vs IPO) |
+```bash
+jupyter notebook notebooks/week4_implementation.ipynb
+```
+
+Step-by-step notebook with problem setup, implementation, and validation.
 
 ---
 
 ## Technical Approach
 
-### Objective Function
+### Model Architecture
 
-The OGD optimizer maximizes:
+- **Input**: Rolling window of past returns (e.g., 126 days × features)
+- **GRU** → last hidden state → **MLP** → **softmax** → weights on [market, IPO]
+- Output satisfies long-only, fully invested (simplex)
 
-```
-F(w) = mean_return - lambda_1 * variance + lambda_2 * max_drawdown - lambda_3 * turnover
-```
+### Objective (Loss to Minimize)
 
-Where:
-- `w` = portfolio weights [SPY, IPO_INDEX], constrained to the probability simplex (long-only, fully invested)
-- `lambda_1 = 20.0` (risk aversion), `lambda_2 = 8.0` (drawdown penalty), `lambda_3 = 0.15` (turnover penalty)
+$$
+\mathcal{L} = -\mu_p + \lambda_{\text{cvar}} L_{\text{cvar}} + \lambda_{\text{vol}} \sigma_p^2 + \lambda_{\text{vol\_excess}} \max(0, \sigma_{\text{ann}} - \tau) + \lambda_{\text{turn}} \cdot \text{turnover} + \lambda_{\text{path}} \|w - w_{\text{prev}}\|^2
+$$
 
-### Algorithm
+- \(\mu_p\): mean portfolio return (maximize)
+- \(L_{\text{cvar}}\): smooth CVaR (tail risk)
+- \(\sigma_p^2\): variance
+- **Vol excess**: penalty when annualized vol exceeds target \(\tau\) (e.g., 25%)
+- **Turnover**: day-over-day weight changes
+- **Path**: weight stability
 
-```
-For each day t:
-    1. Extract trailing 126-day window of returns
-    2. Compute fitness gradient via PyTorch autograd
-    3. Gradient ascent: w_new = w + lr * gradient
-    4. Project onto simplex (Euclidean projection, O(n log n))
-    5. Apply weights to next day's returns (walk-forward, no look-ahead)
-    6. Decay learning rate (lr *= 0.999)
-```
+### Data Sources
 
-### IPO Index Construction
+| Source        | Content                                   |
+|---------------|-------------------------------------------|
+| **SDC**       | IPO dates (`sdc.wrds_ni_details`)         |
+| **CRSP**      | Daily prices, shares (split-adjusted)     |
+| **CRSP SPY/DIA** | Market returns (82% / 18%)            |
 
-- ~80 IPOs from 2020--2024 with a 180 trading-day holding period per stock
-- Market-cap weighted (price x shares outstanding)
-- Average ~8.5 constituents at any given time
+- IPO index: market-cap weighted, 180 trading days per IPO
+- Date range: 2020–2024 (CRSP lag)
 
 ---
 
@@ -118,67 +107,61 @@ For each day t:
 
 ```
 .
-├── README.md                          # This file
-├── report.md                          # Project report (problem, approach, results)
-├── self_critique.md                   # OODA self-assessment
+├── README.md                         # This file
+├── report.md                         # Week 4 report (problem, approach, results)
+├── self_critique.md                 # OODA self-assessment
+├── run_ipo_optimizer_wrds.py        # Main run script (WRDS)
+├── tune_hyperparameters_wrds.py    # Hyperparameter grid search
 ├── notebooks/
-│   └── week3_implementation.ipynb     # Main replication notebook
+│   ├── week4_implementation.ipynb   # Main notebook
+│   ├── ipo_optimizer_2025_wrds.ipynb
+│   └── test_wrds.ipynb
 ├── src/
-│   ├── __init__.py                    # Package exports
-│   ├── model.py                       # OGD allocator, simplex projection, max drawdown
-│   └── utils.py                       # Data fetching, IPO index, metrics, backtest
-├── tests/
-│   └── test_basic.py                  # Unit tests (21 tests)
-├── results/                           # Pre-computed outputs (CSV)
-├── figures/                           # Visualization outputs
-└── docs/
-    ├── development_log.md             # Design decisions and progress
-    ├── llm_exploration/               # AI collaboration logs
-    └── assignments/                   # Course assignment specs
+│   ├── model.py                     # GRU/MLP allocator
+│   ├── losses.py                    # Differentiable loss components
+│   ├── train.py                     # Training loop
+│   ├── export.py                    # Predict, stats, export
+│   ├── data_layer.py                # Rolling windows, splits
+│   ├── wrds_data.py                 # WRDS data loading
+│   └── policy_layer.py              # Position scaling, policy rules
+├── results/
+│   ├── ipo_optimizer_weights.csv    # Daily weights
+│   ├── ipo_optimizer_summary.txt    # Performance summary
+│   └── ipo_optimizer_best_config.json  # Best tuning config
+├── figures/
+│   └── ipo_optimizer_loss.png       # Train/val loss curve
+├── docs/
+│   └── ipo_concentration_diagnosis.md
+└── tests/
+    └── test_basic.py
 ```
-
-### Source Code Overview
-
-| Module | Key Contents |
-|--------|-------------|
-| `src/model.py` | `OnlineOGDAllocator` class, `project_to_simplex()`, `max_drawdown_from_returns()` |
-| `src/utils.py` | `fetch_price_and_shares()`, `build_ipo_index()`, `calculate_metrics()`, `run_backtest()` |
 
 ---
 
-## Data
+## Key Parameters
 
-All data is fetched live from [Yahoo Finance](https://finance.yahoo.com/) via the `yfinance` Python package. No local data files need to be downloaded manually.
-
-- **S&P 500 proxy**: SPY ETF
-- **IPO tickers**: ~80 major US IPOs from 2020--2024 (hardcoded in the notebook)
-- **Date range**: 2020-01-01 to 2025-01-14
-
-**Note**: Results may vary slightly across runs due to Yahoo Finance data updates and retroactive price adjustments.
+| Parameter            | Default | Description                          |
+|----------------------|---------|--------------------------------------|
+| `window_len`         | 126     | Days of history per prediction        |
+| `val_frac`           | 0.2     | Fraction of dates for validation     |
+| `lambda_vol_excess`  | 1.0     | Penalty when vol exceeds target       |
+| `target_vol_annual`  | 0.25    | Target max annual vol (25%)           |
+| `lambda_diversify`   | 0.0     | Diversification penalty (optional)    |
+| `hidden_size`        | 64      | GRU hidden dimension                 |
 
 ---
 
 ## Known Limitations
 
-1. **Look-ahead bias in market caps**: Uses current shares outstanding for all historical dates (should use quarterly SEC filings)
-2. **Survivorship bias**: Only includes IPOs that still trade; excludes delisted/acquired companies
-3. **No real transaction costs**: Turnover penalty is a proxy, not actual bid-ask spreads
-4. **Heuristic hyperparameters**: Penalty coefficients not yet systematically optimized
+1. **No true out-of-sample test** – Metrics are on the validation set; no held-out test period
+2. **Near-constant weights** – Model outputs ~84% market / 16% IPO with minimal day-to-day change
+3. **Survivorship bias** – IPO index excludes delisted stocks
+4. **Turnover display** – Very small turnover (~1e-5) rounds to 0.0000 in the summary
 
-See `self_critique.md` for a detailed discussion.
-
----
-
-## Reproducing Specific Figures
-
-The notebook generates two key visualizations saved to `figures/`:
-- **Cumulative returns** comparing OGD, equal-weight, SPY-only, and IPO-only strategies
-- **Weight evolution** showing how OGD shifts between SPY and IPO exposure over time
-
-These are produced in the final cells of `notebooks/week3_implementation.ipynb`.
+See `report.md` and `self_critique.md` for details.
 
 ---
 
 ## License
 
-This project was developed for STAT 4830 at the University of Pennsylvania.
+Developed for STAT 4830 at the University of Pennsylvania.
