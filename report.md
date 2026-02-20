@@ -8,7 +8,8 @@ We optimize **daily portfolio weights** between two asset classes:
 1. **Market** – S&P 500 (82%) + Dow Jones (18%) proxy from CRSP (SPY/DIA)
 2. **IPO Index** – Market-cap weighted index of recent IPOs, each stock held for 180 trading days post-IPO
 
-The model outputs weights \(w \in [0,1]^2\) with \(w_1 + w_2 = 1\) via a **GRU neural network** that maps rolling windows of past returns to allocations. We minimize a differentiable loss that balances return, risk, and stability.
+The model outputs weights <img width="154" height="25" alt="image" src="https://github.com/user-attachments/assets/89bbd3a6-c97f-4382-b4d5-145b837e7c90" />
+ via a **GRU neural network** that maps rolling windows of past returns to allocations. We minimize a differentiable loss that balances return, risk, and stability.
 
 ### Why This Problem Matters
 
