@@ -4,3 +4,6 @@ docs/figures/*
 !docs/figures/*.tex
 
 local/
+
+# Large dataset files
+datasets/*.zip
