@@ -45,6 +45,10 @@ data/*.csv
 data/*.parquet
 *.log
 
+# Secrets
+.env
+.env.*
+
 # OS
 .DS_Store
 Thumbs.db
