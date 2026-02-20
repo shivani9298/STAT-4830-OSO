@@ -50,9 +50,8 @@ IPOs exhibit distinct return patterns: higher volatility (3–4× the market), m
 ### Mathematical Formulation
 
 **Objective (minimize loss):**
-$$
-\mathcal{L} = -\mu_p + \lambda_{\text{cvar}} \cdot L_{\text{cvar}} + \lambda_{\text{vol}} \cdot \sigma_p^2 + \lambda_{\text{vol\_excess}} \cdot L_{\text{vol\_excess}} + \lambda_{\text{turn}} \cdot \text{turnover} + \lambda_{\text{path}} \cdot \|w - w_{\text{prev}}\|^2
-$$
+<img width="471" height="37" alt="image" src="https://github.com/user-attachments/assets/03fffce2-ed4b-461a-9df5-bf4285e0b8ad" />
+
 
 Where:
 - \(\mu_p = \mathbb{E}[r_p]\) – mean portfolio return (maximize via \(-\mu_p\))
