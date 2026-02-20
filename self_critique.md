@@ -38,7 +38,7 @@ After reviewing the report and running the implementation:
 
 ## DECIDE: Concrete Next Actions
 
-1. **Introduce a True Test Split**: Reserve the last 3–6 months of data (or 2025 when available) as a never-touched test set. Train and tune only on train/validation; report Sharpe, return, drawdown, and turnover exclusively on the test period. Document the split dates clearly in the report.
+1. **Introduce a True Test Split**: Reserve the last 3–6 months of data (or 2025 when available) as a never-touched test set. Pull 2025 data from yfinance to bridge the lack of data gap. Train and tune only on train/validation; report Sharpe, return, drawdown, and turnover exclusively on the test period. Document the split dates clearly in the report.
 
 2. **Diagnose Why Weights Are Static**: Add logging of weight variance over time and correlation with features (e.g., rolling vol, momentum). If the model is collapsing to constants, experiment with (a) reducing turnover/path penalties, (b) adding features that vary more, or (c) increasing model capacity. Document findings in the report.
 
