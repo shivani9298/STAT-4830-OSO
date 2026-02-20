@@ -1,6 +1,6 @@
 # IPO Portfolio Optimization with GRU-Based Allocation
 
-## Problem Statement (~1/2 page)
+## Problem Statement
 
 ### What We Are Optimizing
 
