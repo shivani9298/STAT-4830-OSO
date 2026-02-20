@@ -47,7 +47,7 @@ IPOs exhibit distinct return patterns: higher volatility (3–4× the market), m
 
 ---
 
-## Technical Approach (~1/2 page)
+## Technical Approach
 
 ### Mathematical Formulation
 
@@ -85,7 +85,7 @@ Where:
 
 ---
 
-## Initial Results (~1/2 page)
+## Initial Results
 
 ### Evidence Implementation Works
 
@@ -132,7 +132,7 @@ Where:
 
 ---
 
-## Next Steps (~1/2 page)
+## Next Steps 
 
 ### Immediate Improvements
 
