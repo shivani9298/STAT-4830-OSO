@@ -25,7 +25,8 @@ IPOs exhibit distinct return patterns: higher volatility (3–4× the market), m
 
 ### Constraints
 
-- **Long-only, fully invested**: \(w_i \geq 0\), \(\sum_i w_i = 1\) (softmax output)
+- **Long-only, fully invested**: <img width="99" height="22" alt="image" src="https://github.com/user-attachments/assets/b0b20b63-51ef-45b1-aaae-f90e9c1d42ff" />
+ (softmax output)
 - **No shorting or leverage**
 - **Daily rebalancing**: Weights produced daily for next-day execution
 
