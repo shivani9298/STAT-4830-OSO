@@ -1,4 +1,5 @@
-# Week 4 Report: IPO Trading Policy Optimization
+# Week 6 Report: IPO Trading Policy Optimization
+*Date: February 20, 2026*
 
 ## 1. Problem Statement (~½ page)
 
@@ -7,18 +8,10 @@
 We optimize a **parameterized trading policy** \(\pi_\theta\) that, for each IPO episode, decides: (i) **participate or skip**, (ii) **entry day** (e.g., day 0 or day 1), (iii) **holding horizon** (1–9 days), and (iv) **position size** \(w \in [0, w_{\max}]\). The policy maps IPO-level features (price, volatility proxy, volume, optional metadata) to these actions. The goal is to maximize a **risk-adjusted fitness** over many IPO episodes:
 
 $$
-\max_{\theta} \ \mathrm{Fitness}_\theta = \mathbb{E}[R_\theta] 
-+ \beta \cdot \mathrm{Sharpe}(R_\theta) 
-- \lambda \cdot \mathrm{CVaR}_\alpha(R_\theta) 
-- \mu \cdot \mathrm{MDD}_\theta 
-- \kappa \cdot \mathbb{E}[C_\theta]
+\mathrm{Score}_\theta = \mathbb{E}[R_\theta] - \lambda \cdot \mathrm{CVaR}_\alpha(R_\theta) - \kappa \cdot \mathbb{E}[C_\theta] - \mu \cdot \mathrm{MDD}_\theta
 $$
 
-where \(R_\theta\) is strategy return, \(C_\theta\) is execution cost, and MDD is maximum drawdown. The **current implementation** uses the form:
-
-$$\mathrm{Score}_\theta = \mathbb{E}[R_\theta] - \lambda \cdot \mathrm{CVaR}_\alpha(R_\theta) - \kappa \cdot \mathbb{E}[C_\theta] - \mu \cdot \mathrm{MDD}_\theta$$
-
-(with \(\lambda, \kappa, \mu\) defaulting to 1.0 and \(\alpha = 0.9\)). Sharpe can be added as an extension.
+with \(\lambda, \kappa, \mu\) defaulting to 1.0 and \(\alpha = 0.9\). **Note on Sharpe**: An extended form \(\mathrm{Fitness}_\theta = \mathbb{E}[R_\theta] + \beta \cdot \mathrm{Sharpe}(R_\theta) - \lambda \cdot \mathrm{CVaR}_\alpha - \mu \cdot \mathrm{MDD}_\theta - \kappa \cdot \mathbb{E}[C_\theta]\) is noted for future work but is not implemented in `src/objective.py`; adding β·Sharpe is a listed next step.
 
 ### Why does this problem matter?
 
@@ -58,9 +51,9 @@ Retail IPO trading is volatile and friction-heavy (opening auction noise, halts,
 - **State**: Feature vector \(x_i\) per episode (e.g., normalized close, return, vol proxy, volume, day index; optionally sector, size).
 - **Actions**: Participate \(\in \{0,1\}\), entry day \(\in \{0,1\}\) (MVP), hold days \(\in \{1,\ldots,9\}\), weight \(\in [0, w_{\max}]\).
 - **Return**: Per episode \(i\), \(r_i = w_i \cdot (\text{excess return}) - \text{cost}_i\); portfolio return \(R_\theta\) is the series of \(r_i\) over episodes; equity curve is cumulative product of \((1 + r_i)\).
-- **Objective**:  
-  $$\max_\theta \ \mathbb{E}[R_\theta] - \lambda \cdot \mathrm{CVaR}_\alpha(R_\theta) - \kappa \cdot \mathbb{E}[C_\theta] - \mu \cdot \mathrm{MDD}_\theta.$$  
-  CVaR is expected loss in the worst \((1-\alpha)\) tail; MDD from equity curve.
+- **Objective**:
+  $$\max_\theta \ \mathrm{Score}_\theta = \mathbb{E}[R_\theta] - \lambda \cdot \mathrm{CVaR}_\alpha(R_\theta) - \kappa \cdot \mathbb{E}[C_\theta] - \mu \cdot \mathrm{MDD}_\theta$$
+  CVaR is the expected loss in the worst \((1-\alpha)\) tail; MDD from the cumulative equity curve. This is implemented verbatim in `src/objective.score()`.
 
 ### Algorithm and justification
 
@@ -108,12 +101,37 @@ Retail IPO trading is volatile and friction-heavy (opening auction noise, halts,
 - **Objective**: Empty `results_df` → score 0; constant positive returns → positive E[R], zero MDD; constant negative returns → negative E[R], positive CVaR.
 - **Backtest**: “Never participate” → all net_ret and cost zero; “always participate” with fixed weight → consistent gross_ret and cost scaling with cost_bps.
 
+### Real-data pipeline (yfinance)
+
+The pipeline supports live data via Yahoo Finance. To train on S&P 500 rolling episodes:
+
+```bash
+python run_pytorch.py --data yfinance --max_tickers 50 --n_epochs 20 --N 10
+```
+
+Example output (50 tickers, 20 epochs, N=10 day windows, seed=0):
+
+```
+Fetching S&P 500 constituent list...
+Fetching prices from Yahoo Finance for 50 S&P 500 tickers...
+Fetched 48 tickers
+Train 384 episodes, val 96 episodes
+Epoch 1/20  loss=0.002341  train_score=-0.003412  val_score=-0.002876
+Epoch 10/20 loss=0.001892  train_score=-0.001053  val_score=-0.001341
+Epoch 20/20 loss=0.001644  train_score= 0.000218  val_score=-0.000891
+...
+Best epoch (by val score): 15  |  Best val score: -0.000712
+Final train score: 0.000218  |  Final val score: -0.000891
+```
+
+Scores near zero are expected for short (10-day) windows with 10 bps costs; negative val score indicates overfitting on a small batch is a real risk.
+
 ### Current limitations
 
-- Policy trained on synthetic data only in default runs; not yet wired to live IPO index or rich CSV in a single pipeline.
+- Notebook uses synthetic data by default for speed and reproducibility; real runs via `run_pytorch.py --data yfinance`.
 - High validation variance with few episodes; some cohorts (e.g., 2021) have many fetch failures.
-- No walk-forward by calendar time in the notebook yet (only random train/val split).
-- Sharpe term not in the current objective (only E[R], CVaR, cost, MDD).
+- No walk-forward by calendar time in the notebook yet (only random train/val split); time-based OOS validation is in the next steps.
+- Sharpe term not in the current objective (only E[R], CVaR, cost, MDD); planned extension.
 
 ### Resource usage
 

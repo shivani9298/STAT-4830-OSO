@@ -9,11 +9,8 @@ from pathlib import Path
 import numpy as np
 
 from src.data import (
-    load_ipo_meta,
-    load_prices_dir,
     load_prices_from_yfinance,
     build_episodes,
-    build_episodes_from_rich_csv,
     generate_synthetic_prices,
     Episode,
 )
@@ -84,26 +81,35 @@ def main():
         print(f"Fetched {len(prices_map)} tickers")
         episodes = build_episodes(meta_df, prices_map, N=args.N, short_mode="skip")
     else:
-        rich_path = Path(args.rich_csv) if args.rich_csv else Path("archive-3/ipo_stock_2010_2018_v2.csv")
-        if rich_path.exists():
-            print(f"Using rich IPO CSV: {rich_path}")
-            episodes = build_episodes_from_rich_csv(rich_path)
+        # --data path requires a CSV with columns: ticker, ipo_date
+        # Use --rich_csv for a rich IPO CSV or --meta_csv for a simple meta CSV
+        import pandas as pd
+        meta_path = Path(args.meta_csv or (args.rich_csv or ""))
+        if not meta_path.exists():
+            raise SystemExit(
+                "When --data=path, provide --meta_csv <path> pointing to a CSV with"
+                " columns: ticker, ipo_date (and optionally --prices_dir for local prices)."
+            )
+        meta_df = pd.read_csv(meta_path)
+        meta_df["ipo_date"] = pd.to_datetime(meta_df["ipo_date"]).dt.date
+        if args.prices_dir:
+            # Load per-ticker CSV files from a directory (each file: <ticker>.csv with date, close columns)
+            prices_map = {}
+            for f in Path(args.prices_dir).glob("*.csv"):
+                t = f.stem.upper()
+                df = pd.read_csv(f, parse_dates=["date"])
+                df["date"] = pd.to_datetime(df["date"])
+                df["close"] = pd.to_numeric(df["close"], errors="coerce")
+                prices_map[t] = df.dropna(subset=["close"]).sort_values("date").reset_index(drop=True)
         else:
-            meta_path = Path(args.meta_csv or "archive-3/ipo_clean_2010_2018.csv")
-            if not meta_path.exists():
-                raise SystemExit("When --data=path, provide --rich_csv or --meta_csv (and optionally --prices_dir)")
-            meta_df = load_ipo_meta(meta_path)
-            if args.prices_dir:
-                prices_map = load_prices_dir(args.prices_dir)
-            else:
-                rng = np.random.default_rng(args.seed)
-                prices_map = {}
-                for _, row in meta_df.iterrows():
-                    t, d = row["ticker"], row["ipo_date"]
-                    prices_map[t] = generate_synthetic_prices(
-                        t, d, args.N + 5, rng.uniform(10, 100), rng.uniform(0.01, 0.05), rng
-                    )
-            episodes = build_episodes(meta_df, prices_map, N=args.N, short_mode="skip")
+            rng = np.random.default_rng(args.seed)
+            prices_map = {}
+            for _, row in meta_df.iterrows():
+                t, d = row["ticker"], row["ipo_date"]
+                prices_map[t] = generate_synthetic_prices(
+                    t, d, args.N + 5, rng.uniform(10, 100), rng.uniform(0.01, 0.05), rng
+                )
+        episodes = build_episodes(meta_df, prices_map, N=args.N, short_mode="skip")
 
     n = len(episodes)
     n_val = max(1, int(n * args.val_frac))

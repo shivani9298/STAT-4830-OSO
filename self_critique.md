@@ -1,4 +1,5 @@
-# Self-Critique (Week 4)
+# Self-Critique (Week 6)
+*Date: February 20, 2026*
 
 *Max 1 page. OODA: Observe → Orient → Decide → Act.*
 
