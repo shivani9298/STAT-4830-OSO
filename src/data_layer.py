@@ -113,11 +113,16 @@ def align_returns(
     market: pd.Series,
     ipo: pd.Series,
     drop_na: bool = True,
+    clip_market: tuple[float, float] = (-0.10, 0.10),
+    clip_ipo: tuple[float, float] = (-0.50, 0.50),
 ) -> pd.DataFrame:
     """
     Align market and IPO return series to a common date index.
+    Clips extreme returns: market ±10% (diversified rarely >10%/day), IPO ±50%.
     """
     df = pd.DataFrame({"market_return": market, "ipo_return": ipo})
+    df["market_return"] = df["market_return"].clip(lower=clip_market[0], upper=clip_market[1])
+    df["ipo_return"] = df["ipo_return"].clip(lower=clip_ipo[0], upper=clip_ipo[1])
     df = df.sort_index()
     if drop_na:
         df = df.dropna()

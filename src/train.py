@@ -25,6 +25,10 @@ def train_epoch(
     lambda_turnover: float = 0.01,
     lambda_vol: float = 0.5,
     lambda_path: float = 0.01,
+    lambda_diversify: float = 0.0,
+    min_weight: float = 0.1,
+    lambda_vol_excess: float = 0.0,
+    target_vol_annual: float = 0.20,
 ) -> tuple[float, dict]:
     model.train()
     n = X.shape[0]
@@ -48,6 +52,10 @@ def train_epoch(
             lambda_turnover=lambda_turnover,
             lambda_vol=lambda_vol,
             lambda_path=lambda_path,
+            lambda_diversify=lambda_diversify,
+            min_weight=min_weight,
+            lambda_vol_excess=lambda_vol_excess,
+            target_vol_annual=target_vol_annual,
         )
         optimizer.zero_grad()
         loss.backward()
@@ -75,6 +83,10 @@ def validate(
     lambda_turnover: float = 0.01,
     lambda_vol: float = 0.5,
     lambda_path: float = 0.01,
+    lambda_diversify: float = 0.0,
+    min_weight: float = 0.1,
+    lambda_vol_excess: float = 0.0,
+    target_vol_annual: float = 0.20,
 ) -> tuple[float, dict]:
     model.eval()
     total_loss = 0.0
@@ -93,6 +105,10 @@ def validate(
             lambda_turnover=lambda_turnover,
             lambda_vol=lambda_vol,
             lambda_path=lambda_path,
+            lambda_diversify=lambda_diversify,
+            min_weight=min_weight,
+            lambda_vol_excess=lambda_vol_excess,
+            target_vol_annual=target_vol_annual,
         )
         total_loss += loss.item()
         n_batches += 1
@@ -117,6 +133,10 @@ def run_training(
     lambda_turnover: float = 0.01,
     lambda_vol: float = 0.5,
     lambda_path: float = 0.01,
+    lambda_diversify: float = 0.0,
+    min_weight: float = 0.1,
+    lambda_vol_excess: float = 0.0,
+    target_vol_annual: float = 0.20,
     hidden_size: int = 64,
     num_layers: int = 1,
     model_type: str = "gru",
@@ -154,6 +174,10 @@ def run_training(
             lambda_turnover=lambda_turnover,
             lambda_vol=lambda_vol,
             lambda_path=lambda_path,
+            lambda_diversify=lambda_diversify,
+            min_weight=min_weight,
+            lambda_vol_excess=lambda_vol_excess,
+            target_vol_annual=target_vol_annual,
         )
         val_loss, val_comp = validate(
             model, X_val, R_val, device,
@@ -162,6 +186,10 @@ def run_training(
             lambda_turnover=lambda_turnover,
             lambda_vol=lambda_vol,
             lambda_path=lambda_path,
+            lambda_diversify=lambda_diversify,
+            min_weight=min_weight,
+            lambda_vol_excess=lambda_vol_excess,
+            target_vol_annual=target_vol_annual,
         )
         history.append({
             "epoch": epoch + 1,

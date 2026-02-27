@@ -79,27 +79,51 @@ def export_weights_csv(
     df.to_csv(out_path)
 
 
+def _stats_line(name: str, s: dict) -> str:
+    """Format a stats dict as a compact line."""
+    return (f"  {name:12} Total={s['total_return']:.2%}  AnnRet={s['return_annualized']:.2%}  "
+            f"AnnVol={s['volatility_annualized']:.2%}  Sharpe={s['sharpe_annualized']:.2f}  MaxDD={s['max_drawdown']:.2%}")
+
+
 def export_summary(
     stats: dict,
     weights: np.ndarray,
     out_path: str | Path,
+    R: Optional[np.ndarray] = None,
 ) -> None:
-    """Write a short summary for the retail trader."""
+    """Write a short summary for the retail trader.
+    If R is provided (N, 2) with [market_return, ipo_return], includes baseline comparison.
+    """
     avg_ipo = float(np.mean(weights[:, 1])) if weights.shape[1] > 1 else 0.0
     pct_high_ipo = float(np.mean(weights[:, 1] > 0.2)) * 100.0 if weights.shape[1] > 1 else 0.0
     lines = [
         "IPO Portfolio Optimizer — Summary",
         "==================================",
-        f"Total return:          {stats.get('total_return', 0):.2%}",
-        f"Return (annualized):  {stats.get('return_annualized', 0):.2%}",
-        f"Volatility (annual):  {stats.get('volatility_annualized', 0):.2%}",
-        f"Mean daily return:    {stats.get('mean_return_daily', 0):.4%}",
-        f"Volatility (daily):   {stats.get('volatility_daily', 0):.4%}",
-        f"Sharpe (annualized):  {stats.get('sharpe_annualized', 0):.2f}",
-        f"Max drawdown:         {stats.get('max_drawdown', 0):.2%}",
-        f"Avg turnover:         {stats.get('avg_turnover', 0):.4f}",
-        f"Average IPO weight:   {avg_ipo:.2%}",
-        f"% days IPO weight>20%: {pct_high_ipo:.1f}%",
+        "",
+        "Model Portfolio:",
+        f"  Total return:          {stats.get('total_return', 0):.2%}",
+        f"  Return (annualized):  {stats.get('return_annualized', 0):.2%}",
+        f"  Volatility (annual):  {stats.get('volatility_annualized', 0):.2%}",
+        f"  Sharpe (annualized):  {stats.get('sharpe_annualized', 0):.2f}",
+        f"  Max drawdown:         {stats.get('max_drawdown', 0):.2%}",
+        f"  Avg turnover:         {stats.get('avg_turnover', 0):.4f}",
+        f"  Average IPO weight:   {avg_ipo:.2%}",
+        f"  % days IPO weight>20%: {pct_high_ipo:.1f}%",
     ]
+    if R is not None and R.shape[1] >= 2:
+        # Baselines: SPY-only [1,0], IPO-only [0,1], Equal-weight [0.5, 0.5]
+        w_spy = np.tile([1.0, 0.0], (R.shape[0], 1))
+        w_ipo = np.tile([0.0, 1.0], (R.shape[0], 1))
+        w_eq = np.tile([0.5, 0.5], (R.shape[0], 1))
+        s_spy = portfolio_stats(w_spy, R)
+        s_ipo = portfolio_stats(w_ipo, R)
+        s_eq = portfolio_stats(w_eq, R)
+        lines.extend([
+            "",
+            "Baseline Comparison (same period):",
+            _stats_line("Market only:", s_spy),
+            _stats_line("IPO only:", s_ipo),
+            _stats_line("Equal 50/50:", s_eq),
+        ])
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text("\n".join(lines))

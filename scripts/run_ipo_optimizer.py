@@ -73,7 +73,7 @@ def main():
     summary_path = args.summary_txt or out_dir / "summary.txt"
 
     export_weights_csv(dates_val, weights, weights_path)
-    export_summary(stats, weights, summary_path)
+    export_summary(stats, weights, summary_path, R=R_val)
     print(f"Exported weights to {weights_path}")
     print(f"Exported summary to {summary_path}")
 
