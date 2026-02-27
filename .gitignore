@@ -6,4 +6,8 @@ docs/figures/*
 local/
 
 # Large dataset files
-datasets/*.zip
+datasets/
+
+# Python cache
+__pycache__/
+*.pyc
