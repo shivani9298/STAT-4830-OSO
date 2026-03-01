@@ -12,8 +12,11 @@ import json
 from pathlib import Path
 from itertools import product
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+from dotenv import load_dotenv
+load_dotenv(ROOT / ".env")
 
 import numpy as np
 import torch
@@ -23,7 +26,7 @@ from src.data_layer import build_rolling_windows, train_val_split
 from src.train import run_training
 from src.export import predict_weights, portfolio_stats
 
-# Hyperparameter grid (all configurations; 16 configs ~1.5 hr)
+# Hyperparameter grid (all configurations; 288 configs)
 GRID = {
     "window_len": [84, 126],
     "val_frac": [0.2],
@@ -31,6 +34,8 @@ GRID = {
     "batch_size": [32],
     "lambda_vol": [0.5, 1.0],
     "lambda_cvar": [0.5, 1.0],
+    "lambda_turnover": [0.0025, 0.005, 0.01],
+    "lambda_path": [0.0025, 0.005, 0.01],
     "lambda_vol_excess": [0.5, 1.0],
     "target_vol_annual": [0.20, 0.25],
     "hidden_size": [64],
@@ -75,9 +80,9 @@ def run_config(data_prep, config, device):
         batch_size=config["batch_size"],
         patience=config["patience"],
         lambda_cvar=config["lambda_cvar"],
-        lambda_turnover=0.01,
+        lambda_turnover=config.get("lambda_turnover", 0.01),
         lambda_vol=config["lambda_vol"],
-        lambda_path=0.01,
+        lambda_path=config.get("lambda_path", 0.01),
         lambda_vol_excess=config.get("lambda_vol_excess", 1.0),
         target_vol_annual=config.get("target_vol_annual", 0.25),
         lambda_diversify=0.0,

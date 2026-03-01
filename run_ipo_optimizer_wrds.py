@@ -14,6 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+from dotenv import load_dotenv
+load_dotenv(ROOT / ".env")
+
 import numpy as np
 import pandas as pd
 import torch
@@ -26,6 +29,7 @@ from src.wrds_data import (
     load_sdc_ipo_dates_wrds,
     load_sp500_dow_market_returns_wrds,
     load_stock_returns_wrds,
+    load_vix_wrds,
 )
 from src.data_layer import align_returns, add_optional_features, build_rolling_windows, train_val_split
 from src.train import run_training
@@ -44,6 +48,8 @@ DEFAULTS = {
     "patience": 10,
     "lambda_vol": 0.5,
     "lambda_cvar": 0.5,
+    "lambda_turnover": 0.01,
+    "lambda_path": 0.01,
     "lambda_vol_excess": 1.0,
     "target_vol_annual": 0.25,
     "hidden_size": 64,
@@ -202,7 +208,9 @@ def prepare_data(conn):
     # Train
     ipo_ret = ipo_index["ipo_ret"].rename("ipo_return")
     df = align_returns(market_ret, ipo_ret)
-    df = add_optional_features(df, include_vix=False)
+    vix_series = load_vix_wrds(conn, start=start_d, end=market_end)
+    print(f"VIX data from CBOE: {len(vix_series)} days")
+    df = add_optional_features(df, vix_series=vix_series)
     feature_cols = list(df.columns)
     return {"df": df, "feature_cols": feature_cols}
 
@@ -250,6 +258,8 @@ def main():
         patience=cfg["patience"],
         lambda_vol=cfg["lambda_vol"],
         lambda_cvar=cfg["lambda_cvar"],
+        lambda_turnover=cfg.get("lambda_turnover", 0.01),
+        lambda_path=cfg.get("lambda_path", 0.01),
         lambda_diversify=cfg.get("lambda_diversify", 1.0),
         min_weight=cfg.get("min_weight", 0.1),
         lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),

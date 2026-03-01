@@ -129,14 +129,23 @@ def align_returns(
     return df
 
 
-def add_optional_features(df: pd.DataFrame, include_vix: bool = False) -> pd.DataFrame:
+def add_optional_features(
+    df: pd.DataFrame,
+    include_vix: bool = False,
+    vix_series: Optional[pd.Series] = None,
+) -> pd.DataFrame:
     """
     Add optional features: rolling volatility (21d), optionally VIX.
+
+    If vix_series is provided, use it directly (e.g. from WRDS).
+    Otherwise, download from yfinance if include_vix=True, or fill with 20.0.
     """
     df = df.copy()
     df["rolling_vol"] = df["market_return"].rolling(21, min_periods=5).std()
     df["rolling_vol"] = df["rolling_vol"].bfill().fillna(0.01)
-    if include_vix and yf is not None:
+    if vix_series is not None and len(vix_series) > 0:
+        df["vix"] = vix_series.reindex(df.index).ffill().bfill().fillna(20.0)
+    elif include_vix and yf is not None:
         try:
             vix = yf.download("^VIX", start=df.index.min(), end=df.index.max(), progress=False)
             if not vix.empty:

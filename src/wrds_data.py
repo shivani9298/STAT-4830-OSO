@@ -77,6 +77,31 @@ def load_market_returns_wrds(
     return out
 
 
+def load_vix_wrds(
+    conn,
+    start: str = "2010-01-01",
+    end: Optional[str] = None,
+) -> pd.Series:
+    """
+    Load daily VIX closing level from CBOE via WRDS (cboe.cboe table).
+
+    Returns:
+        Series of daily VIX levels with datetime index, name 'vix'.
+    """
+    end_clause = f"AND date <= '{end}'" if end else ""
+    sql = f"""
+        SELECT date, vix
+        FROM cboe.cboe
+        WHERE date >= '{start}' {end_clause}
+          AND vix IS NOT NULL
+        ORDER BY date
+    """
+    df = conn.raw_sql(sql, date_cols=["date"])
+    out = df.set_index("date")["vix"].sort_index().astype(float)
+    out.name = "vix"
+    return out
+
+
 def load_sp500_dow_market_returns_wrds(
     conn,
     start: str = "2010-01-01",
