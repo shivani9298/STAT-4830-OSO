@@ -50,7 +50,8 @@ IPOs exhibit return dynamics distinct from broad equities: higher volatility (3â
 
 The model minimizes a composite differentiable loss over mini-batches of rolling windows:
 
-$$L = -\bar{r}_p + \lambda_{\text{cvar}} \cdot L_{\text{cvar}} + \lambda_{\text{vol}} \cdot \text{Var}(r_p) + \lambda_{\text{vol\_excess}} \cdot \max(0, \hat{\sigma}_{\text{ann}} - \sigma_{\text{target}}) + \lambda_{\text{turnover}} \cdot \|w_t - w_{t-1}\|_1 + \lambda_{\text{path}} \cdot \|w_t - w_{t-1}\|_2^2$$
+<img width="616" height="81" alt="image" src="https://github.com/user-attachments/assets/e019b53a-dc1d-4dbb-aacd-fcbca45ad6f7" />
+
 
 Where $r_p = w \cdot r$ is the portfolio return, $L_{\text{cvar}}$ is a soft-sorted approximation of CVaR at the 5% level using temperature-scaled exponential weighting, and $\hat{\sigma}_{\text{ann}} = \text{std}(r_p) \cdot \sqrt{252}$. Constraints are implicit: the softmax output layer guarantees $w_i \geq 0$ and $\sum w_i = 1$.
 
