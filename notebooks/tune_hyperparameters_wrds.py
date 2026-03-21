@@ -28,19 +28,22 @@ from src.export import predict_weights, portfolio_stats
 
 # Hyperparameter grid (all configurations; 288 configs)
 GRID = {
-    "window_len": [84, 126],
+    # Training mechanics fixed — already validated by manual runs
+    "window_len": [84],
     "val_frac": [0.2],
-    "lr": [1e-3],
-    "batch_size": [32],
+    "lr": [3e-4],
+    "lr_decay": [0.1],
+    "batch_size": [256],
+    "hidden_size": [64],
+    "patience": [50],
+    "epochs": [50],
+    # Loss hyperparameters — the actual search space
     "lambda_vol": [0.5, 1.0],
     "lambda_cvar": [0.5, 1.0],
-    "lambda_turnover": [0.0025, 0.005, 0.01],
-    "lambda_path": [0.0025, 0.005, 0.01],
+    "lambda_turnover": [0.0, 0.0001, 0.0005, 0.001],
+    "lambda_path": [0.0, 0.0001, 0.0005, 0.001],
     "lambda_vol_excess": [0.5, 1.0],
     "target_vol_annual": [0.20, 0.25],
-    "hidden_size": [64],
-    "patience": [10],
-    "epochs": [50],
 }
 
 
@@ -77,6 +80,7 @@ def run_config(data_prep, config, device):
         device=device,
         epochs=config["epochs"],
         lr=config["lr"],
+        lr_decay=config.get("lr_decay", 0.1),
         batch_size=config["batch_size"],
         patience=config["patience"],
         lambda_cvar=config["lambda_cvar"],

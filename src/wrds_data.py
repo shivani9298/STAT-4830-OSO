@@ -42,7 +42,15 @@ def get_connection(
     username = wrds_username or os.environ.get("WRDS_USERNAME")
     password = wrds_password or os.environ.get("WRDS_PASSWORD")
     if username and password:
-        return wrds.Connection(wrds_username=username, wrds_password=password)
+        # The WRDS library doesn't accept a password kwarg — it always initialises
+        # self._password = "" and tries an empty-password connection first, which
+        # means pgpass is never consulted.  Work around this by deferring autoconnect,
+        # injecting the password, then connecting manually.
+        conn = wrds.Connection(wrds_username=username, autoconnect=False)
+        conn._password = password
+        conn.connect()
+        conn.load_library_list()
+        return conn
     return wrds.Connection(wrds_username=username)
 
 

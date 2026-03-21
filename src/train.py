@@ -126,6 +126,7 @@ def run_training(
     device: Optional[torch.device] = None,
     epochs: int = 50,
     lr: float = 1e-3,
+    lr_decay: float = 0.1,
     batch_size: int = 64,
     patience: int = 10,
     checkpoint_dir: Optional[str] = None,
@@ -160,6 +161,9 @@ def run_training(
         model_type=model_type,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    # Drop LR by lr_decay after the first epoch to escape the noise floor,
+    # then hold steady for the remainder of training.
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[1], gamma=lr_decay)
 
     best_val_loss = float("inf")
     best_state = None
@@ -191,10 +195,13 @@ def run_training(
             lambda_vol_excess=lambda_vol_excess,
             target_vol_annual=target_vol_annual,
         )
+        current_lr = scheduler.get_last_lr()[0]
+        scheduler.step()
         history.append({
             "epoch": epoch + 1,
             "train_loss": train_loss,
             "val_loss": val_loss,
+            "lr": current_lr,
             **{f"train_{k}": v for k, v in train_comp.items()},
             **{f"val_{k}": v for k, v in val_comp.items()},
         })
