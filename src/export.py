@@ -13,6 +13,23 @@ from .model import AllocatorNet
 
 
 @torch.no_grad()
+def predict_sector_head_weights(
+    model: torch.nn.Module,
+    X: np.ndarray,
+    device: torch.device,
+    batch_size: int = 256,
+) -> np.ndarray:
+    """Model forward (B, T, F) -> (B, G, 2). Returns (N, G, 2) numpy."""
+    model.eval()
+    out = []
+    for start in range(0, X.shape[0], batch_size):
+        x = torch.as_tensor(X[start : start + batch_size], device=device, dtype=torch.float32)
+        w = model(x)
+        out.append(w.cpu().numpy())
+    return np.concatenate(out, axis=0)
+
+
+@torch.no_grad()
 def predict_weights(
     model: AllocatorNet,
     X: np.ndarray,
@@ -31,6 +48,11 @@ def predict_weights(
 
 def portfolio_stats(weights: np.ndarray, R: np.ndarray) -> dict:
     """Compute mean return, vol, Sharpe, max drawdown, avg turnover from weights and returns."""
+    weights = np.asarray(weights, dtype=np.float64)
+    R = np.asarray(R, dtype=np.float64)
+    if np.isnan(weights).any() or np.isnan(R).any():
+        weights = np.nan_to_num(weights, nan=0.0, posinf=0.0, neginf=0.0)
+        R = np.nan_to_num(R, nan=0.0, posinf=0.0, neginf=0.0)
     port_ret = (weights * R).sum(axis=1)
     mean_ret = float(np.mean(port_ret))
     vol = float(np.std(port_ret))
@@ -127,3 +149,51 @@ def export_summary(
         ])
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text("\n".join(lines))
+
+
+def export_sector_group_outputs(
+    dates: np.ndarray,
+    weights: np.ndarray,
+    R: np.ndarray,
+    sector_labels: list[str],
+    out_dir: str | Path,
+    sanitize_fn=None,
+) -> None:
+    """
+    ``weights``: (N, G, 2), ``R``: (N, G, 2). Writes one CSV per sector and a combined summary.
+
+    ``sanitize_fn``: optional(str) -> str for filenames; default keeps alnum + underscore.
+    """
+    from re import sub
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _safe(s: str) -> str:
+        if sanitize_fn:
+            return sanitize_fn(s)
+        return sub(r"[^A-Za-z0-9_]+", "_", s).strip("_") or "sector"
+
+    summary_lines = [
+        "IPO Optimizer — Per-sector portfolios (market vs sector IPO basket)",
+        "Each sector: separate softmax over [market, IPO basket]; shared RNN state.",
+        "",
+    ]
+    for g, label in enumerate(sector_labels):
+        tag = _safe(label)
+        w_g = weights[:, g, :]
+        R_g = R[:, g, :]
+        stats_g = portfolio_stats(w_g, R_g)
+        export_weights_csv(
+            dates,
+            w_g,
+            out_dir / f"ipo_optimizer_weights_sector_{tag}.csv",
+            asset_names=["weight_market", f"weight_ipo_{tag}"],
+        )
+        summary_lines.append(f"Sector: {label}")
+        summary_lines.append(
+            f"  Sharpe={stats_g['sharpe_annualized']:.2f}  MaxDD={stats_g['max_drawdown']:.2%}  "
+            f"AnnRet={stats_g['return_annualized']:.2%}  Avg IPO weight={float(np.mean(w_g[:, 1])):.2%}"
+        )
+        summary_lines.append("")
+    (out_dir / "ipo_optimizer_summary_by_sector.txt").write_text("\n".join(summary_lines))

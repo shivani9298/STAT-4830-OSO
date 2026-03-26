@@ -134,3 +134,31 @@ def combined_loss(
         "diversify": L_div.item(),
     }
     return L, components
+
+
+def combined_loss_sector_heads(
+    weights: torch.Tensor,
+    returns: torch.Tensor,
+    weights_prev: Optional[torch.Tensor] = None,
+    **kwargs,
+) -> tuple[torch.Tensor, dict]:
+    """
+    Mean of ``combined_loss`` over G independent sector heads.
+
+    weights, returns: (B, G, 2)
+    weights_prev: (B, G, 2) or None
+    """
+    n_sec = weights.shape[1]
+    if n_sec == 0:
+        return torch.tensor(0.0, device=weights.device, dtype=weights.dtype), {}
+    total = torch.tensor(0.0, device=weights.device, dtype=weights.dtype)
+    agg: dict[str, float] = {}
+    for g in range(n_sec):
+        wp = weights_prev[:, g] if weights_prev is not None else None
+        L, comp = combined_loss(weights[:, g], returns[:, g], weights_prev=wp, **kwargs)
+        total = total + L
+        for k, v in comp.items():
+            agg[k] = agg.get(k, 0.0) + v
+    n = float(n_sec)
+    agg_mean = {k: v / n for k, v in agg.items()}
+    return total / n_sec, agg_mean
