@@ -2,16 +2,16 @@ IPO Portfolio Optimizer — Summary
 ==================================
 
 Model Portfolio:
-  Total return:          34.39%
-  Return (annualized):  39.44%
-  Volatility (annual):  13.52%
-  Sharpe (annualized):  2.53
-  Max drawdown:         -7.66%
+  Total return:          83.03%
+  Return (annualized):  23.24%
+  Volatility (annual):  18.16%
+  Sharpe (annualized):  1.24
+  Max drawdown:         -20.56%
   Avg turnover:         0.0000
-  Average IPO weight:   16.09%
+  Average IPO weight:   8.51%
   % days IPO weight>20%: 0.0%
 
 Baseline Comparison (same period):
-  Market only: Total=17.26%  AnnRet=19.62%  AnnVol=12.22%  Sharpe=1.53  MaxDD=-7.89%
-  IPO only:    Total=166.59%  AnnRet=201.35%  AnnVol=30.68%  Sharpe=3.75  MaxDD=-10.08%
-  Equal 50/50: Total=78.16%  AnnRet=91.50%  AnnVol=19.26%  Sharpe=3.47  MaxDD=-7.20%
+  Market only: Total=35.10%  AnnRet=10.96%  AnnVol=16.77%  Sharpe=0.70  MaxDD=-21.21%
+  IPO only:    Total=2978.75%  AnnRet=226.96%  AnnVol=67.89%  Sharpe=2.03  MaxDD=-37.85%
+  Equal 50/50: Total=621.33%  AnnRet=97.99%  AnnVol=37.66%  Sharpe=1.99  MaxDD=-26.36%
