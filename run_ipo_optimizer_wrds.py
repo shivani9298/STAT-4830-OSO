@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run IPO Portfolio Optimizer on 2020-01-01 to 2025-12-31.
+Run IPO Portfolio Optimizer on 2010-01-01 to 2024-12-31 (see START_DATE / END_DATE).
 IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices (split-adjusted).
 Market: Market-cap weighted portfolio of S&P 500 (SPY) and Dow Jones (DIA) from CRSP.
 Uses best config from results/ipo_optimizer_best_config.json if present (from tune_hyperparameters_wrds.py).
@@ -32,8 +32,11 @@ from src.train import run_training
 from src.export import predict_weights, portfolio_stats, export_weights_csv, export_summary
 from src.policy_layer import ipo_tilt_to_position_scale, policy_rule
 
-START_DATE = "2020-01-01"
-END_DATE = "2025-12-31"
+START_DATE = "2010-01-01"
+END_DATE = "2024-12-31"
+# Rolling-window splits (prediction date); must match tune_hyperparameters_wrds embargo logic.
+VAL_START = "2019-01-01"
+TEST_START = "2022-01-01"
 
 DEFAULTS = {
     "window_len": 126,
@@ -78,8 +81,15 @@ def build_ipo_index_mcap(prices_df, ipo_dates_df, shares_dict, holding_days=180,
         if t != "SPY" and t in ipo_lookup
     }
     all_dates = prices_df.index.tolist()
+    n_all = len(all_dates)
     index_data = []
-    for date in all_dates:
+    progress_every = max(1, n_all // 20)
+    for i, date in enumerate(all_dates):
+        if i == 0 or (i + 1) % progress_every == 0 or i == n_all - 1:
+            print(
+                f"  [IPO] IPO index progress: day {i + 1}/{n_all} ({100 * (i + 1) / n_all:.0f}%)",
+                flush=True,
+            )
         market_caps = {}
         for ticker, ipo_date in ipo_lookup.items():
             if ticker not in trading_days or ticker not in shares_dict:
@@ -115,11 +125,18 @@ def build_ipo_index_mcap(prices_df, ipo_dates_df, shares_dict, holding_days=180,
     return pd.DataFrame(index_data).set_index("date")
 
 
-def prepare_data(conn):
+def prepare_data(conn, start: str | None = None, end: str | None = None):
     """Load and prepare IPO + market data. Returns dict with df, feature_cols for rolling windows."""
+    start = start or START_DATE
+    end = end or END_DATE
+    print(
+        f"[IPO] Loading data {start}–{end}: SDC IPO list + CRSP prices (large WRDS query; "
+        "often several minutes, not frozen)...",
+        flush=True,
+    )
     # IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices
     ipo_csv = load_ipo_data_from_sdc_wrds(
-        conn, start=START_DATE, end=END_DATE, library="sdc", price_source="crsp"
+        conn, start=start, end=end, library="sdc", price_source="crsp"
     )
     print(f"IPO data from SDC + CRSP: {len(ipo_csv)} rows, {ipo_csv['tic'].nunique()} tickers")
 
@@ -130,8 +147,9 @@ def prepare_data(conn):
     prices_ipo.index = pd.to_datetime(prices_ipo.index).normalize()
 
     # IPO dates from SDC (not first trading date); filter to tickers with prices
+    print("[IPO] Loading SDC IPO dates for tickers...", flush=True)
     ipo_dates = load_sdc_ipo_dates_wrds(
-        conn, start=START_DATE, end=END_DATE, library="sdc"
+        conn, start=start, end=end, library="sdc"
     )
     ipo_df = ipo_dates[ipo_dates["ticker"].isin(prices_ipo.columns)].copy()
     ipo_df = ipo_df.sort_values("ipo_date").reset_index(drop=True)
@@ -141,8 +159,9 @@ def prepare_data(conn):
     print(f"IPO tickers: {len(ipo_df)}, Date range: {start_d} to {end_d}")
 
     # Market returns: market-cap weighted S&P 500 (82%) + Dow Jones (18%) from CRSP
-    # Use full date range through END_DATE to extend to end of 2025
-    market_end = max(end_d, END_DATE) if end_d else END_DATE
+    # Use full date range through `end` to align with requested sample
+    market_end = max(end_d, end) if end_d else end
+    print("[IPO] Loading market returns (CRSP SPY/DIA blend)...", flush=True)
     market_ret = load_sp500_dow_market_returns_wrds(
         conn, start=start_d, end=market_end, w_sp500=0.82, w_dow=0.18
     )
@@ -172,7 +191,7 @@ def prepare_data(conn):
             select gvkey, datadate, csho
             from comp.funda
             where gvkey in ('{gvkey_list}')
-                and datadate >= '2020-01-01'
+                and datadate >= '{start}'
                 and csho > 0
                 and indfmt = 'INDL' and datafmt = 'STD'
             """,
@@ -196,6 +215,12 @@ def prepare_data(conn):
     print(f"Market return days: {len(market_ret)}, Tickers with shares: {len(shares_outstanding)}")
 
     # Build IPO index
+    n_days = len(prices.index)
+    print(
+        f"[IPO] Building market-cap IPO index over {n_days} trading days (CPU-heavy; "
+        f"can take 1–15+ min with many tickers)...",
+        flush=True,
+    )
     ipo_index = build_ipo_index_mcap(prices, ipo_df, shares_outstanding, holding_days=180)
     print(f"IPO index: {ipo_index['ipo_ret'].notna().sum()} days with valid returns")
 
@@ -211,6 +236,11 @@ def main():
     print("Connecting to WRDS...")
     conn = get_connection()
     print("Connected.")
+    print(
+        "[IPO] Next steps load SDC/CRSP data then build the IPO index. "
+        "Long gaps in output are normal—queries are running on WRDS.",
+        flush=True,
+    )
 
     data_prep = prepare_data(conn)
     df = data_prep["df"]
@@ -241,6 +271,7 @@ def main():
     print(f"Train windows: {X_train.shape[0]}, Val windows: {X_val.shape[0]}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("[IPO] Starting model training (watch for [IPO] epoch lines below)...", flush=True)
     model, history = run_training(
         data,
         device=device,
@@ -256,6 +287,8 @@ def main():
         target_vol_annual=cfg.get("target_vol_annual", 0.25),
         hidden_size=cfg["hidden_size"],
         model_type="gru",
+        verbose=True,
+        log_every=1,
     )
     print(f"Trained for {len(history)} epochs")
 

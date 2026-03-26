@@ -2,7 +2,12 @@
 """
 Tune hyperparameters for IPO Portfolio Optimizer.
 
-Grid search over key hyperparameters; optimize validation Sharpe.
+Data: WRDS IPO + market panel from DATA_START through DATA_END (inclusive).
+Rolling-window rows use train_val_test_split with an embargo of ``window_len`` trading
+days so train / validation / test sets have **no overlapping calendar input spans**
+across split boundaries (see src.data_layer.train_val_test_split).
+
+Grid search over key hyperparameters; optimize validation Sharpe (test set is held out for reporting only).
 Saves best config to results/ipo_optimizer_best_config.json.
 """
 from __future__ import annotations
@@ -12,46 +17,78 @@ import json
 from pathlib import Path
 from itertools import product
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+from dotenv import load_dotenv
+load_dotenv(ROOT / ".env")
 
 import numpy as np
 import torch
 
-from run_ipo_optimizer_wrds import get_connection, prepare_data
-from src.data_layer import build_rolling_windows, train_val_split
+from run_ipo_optimizer_wrds import (
+    get_connection,
+    prepare_data,
+    START_DATE as DATA_START,
+    END_DATE as DATA_END,
+    VAL_START,
+    TEST_START,
+)
+from src.data_layer import build_rolling_windows, train_val_test_split
 from src.train import run_training
 from src.export import predict_weights, portfolio_stats
 
-# Hyperparameter grid (all configurations; 16 configs ~1.5 hr)
+# VAL_START / TEST_START: run_ipo_optimizer_wrds (embargo uses window_len from each config).
+
+# Hyperparameter grid (all configurations; 288 configs)
 GRID = {
-    "window_len": [84, 126],
-    "val_frac": [0.2],
-    "lr": [1e-3],
-    "batch_size": [32],
+    # Training mechanics fixed — already validated by manual runs
+    "window_len": [84],
+    "lr": [3e-4],
+    "lr_decay": [0.1],
+    "batch_size": [256],
+    "hidden_size": [64],
+    "patience": [50],
+    "epochs": [50],
+    # Loss hyperparameters — the actual search space
     "lambda_vol": [0.5, 1.0],
     "lambda_cvar": [0.5, 1.0],
+    "lambda_turnover": [0.0, 0.0001, 0.0005, 0.001],
+    "lambda_path": [0.0, 0.0001, 0.0005, 0.001],
     "lambda_vol_excess": [0.5, 1.0],
     "target_vol_annual": [0.20, 0.25],
-    "hidden_size": [64],
-    "patience": [10],
-    "epochs": [50],
 }
 
 
+def _json_safe(obj):
+    """Recursively convert numpy scalars for JSON."""
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (np.floating, np.integer)):
+        return float(obj)
+    return obj
+
+
 def run_config(data_prep, config, device):
-    """Train with given config, return validation Sharpe and stats."""
+    """Train with given config; return validation Sharpe and stats (val + held-out test)."""
     df = data_prep["df"]
     feature_cols = data_prep["feature_cols"]
     window_len = config["window_len"]
-    val_frac = config["val_frac"]
 
     X, R, dates = build_rolling_windows(df, window_len=window_len, feature_cols=feature_cols)
     if X.shape[0] < 50:
         return float("-inf"), {}
 
-    X_train, R_train, d_train, X_val, R_val, d_val = train_val_split(X, R, dates, val_frac=val_frac)
-    if X_val.shape[0] < 10:
+    X_train, R_train, d_train, X_val, R_val, d_val, X_test, R_test, d_test = train_val_test_split(
+        X,
+        R,
+        dates,
+        val_start=VAL_START,
+        test_start=TEST_START,
+        df_index=df.index,
+        window_len=window_len,
+    )
+    if X_train.shape[0] < 50 or X_val.shape[0] < 10 or X_test.shape[0] < 10:
         return float("-inf"), {}
 
     data = {
@@ -72,12 +109,13 @@ def run_config(data_prep, config, device):
         device=device,
         epochs=config["epochs"],
         lr=config["lr"],
+        lr_decay=config.get("lr_decay", 0.1),
         batch_size=config["batch_size"],
         patience=config["patience"],
         lambda_cvar=config["lambda_cvar"],
-        lambda_turnover=0.01,
+        lambda_turnover=config.get("lambda_turnover", 0.01),
         lambda_vol=config["lambda_vol"],
-        lambda_path=0.01,
+        lambda_path=config.get("lambda_path", 0.01),
         lambda_vol_excess=config.get("lambda_vol_excess", 1.0),
         target_vol_annual=config.get("target_vol_annual", 0.25),
         lambda_diversify=0.0,
@@ -85,17 +123,34 @@ def run_config(data_prep, config, device):
         hidden_size=config["hidden_size"],
         num_layers=1,
         model_type="gru",
+        verbose=True,
+        log_every=5,
     )
-    weights = predict_weights(model, data["X_val"], device)
-    stats = portfolio_stats(weights, data["R_val"])
-    return stats["sharpe_annualized"], stats
+    weights_val = predict_weights(model, data["X_val"], device)
+    stats_val = portfolio_stats(weights_val, data["R_val"])
+    weights_test = predict_weights(model, X_test, device)
+    stats_test = portfolio_stats(weights_test, R_test)
+    stats = {
+        "val": stats_val,
+        "test": stats_test,
+        "n_train_windows": int(X_train.shape[0]),
+        "n_val_windows": int(X_val.shape[0]),
+        "n_test_windows": int(X_test.shape[0]),
+    }
+    return stats_val["sharpe_annualized"], stats
 
 
 def main():
     print("Connecting to WRDS...", flush=True)
     conn = get_connection()
     print("Preparing data...", flush=True)
-    data_prep = prepare_data(conn)
+    data_prep = prepare_data(conn, start=DATA_START, end=DATA_END)
+    print(
+        f"Data range {DATA_START}–{DATA_END}; splits use window_len={GRID['window_len'][0]}-day "
+        f"embargo (train/val/test label windows do not share input rows across boundaries; "
+        f"see train_val_test_split). Anchors: val_start={VAL_START}, test_start={TEST_START}.",
+        flush=True,
+    )
 
     keys = list(GRID.keys())
     configs = [
@@ -118,11 +173,17 @@ def main():
         if best_config is None:
             return
         out = {
+            "data_split": {
+                "data_start": DATA_START,
+                "data_end": DATA_END,
+                "val_start": VAL_START,
+                "test_start": TEST_START,
+            },
             "best_config": best_config,
             "best_sharpe": best_sharpe,
-            "best_stats": {k: float(v) if isinstance(v, (np.floating, np.integer)) else v for k, v in best_stats.items()},
+            "best_stats": _json_safe(best_stats),
             "all_results": [
-                {"config": r["config"], "sharpe": r["sharpe"], "stats": r.get("stats", {})}
+                {"config": r["config"], "sharpe": r["sharpe"], "stats": _json_safe(r.get("stats", {}))}
                 for r in results
             ],
         }
@@ -164,7 +225,10 @@ def main():
 
     print("\n" + "=" * 50)
     print("Best config:", json.dumps(best_config, indent=2))
-    print(f"Validation Sharpe: {best_sharpe:.2f}")
+    print(f"Validation Sharpe (selection metric): {best_sharpe:.2f}")
+    if best_stats.get("test"):
+        ts = best_stats["test"].get("sharpe_annualized", float("nan"))
+        print(f"Test Sharpe (held-out, same config): {ts:.2f}")
     print(f"Saved to {config_path}")
     return 0
 
