@@ -1,0 +1,58 @@
+Connecting to WRDS...
+Loading library list...
+Done
+Preparing data...
+IPO data from SDC + CRSP: 770418 rows, 1136 tickers
+IPO tickers: 1136, Date range: 2020-01-02 to 2024-12-31
+Market return days: 1258, Tickers with shares: 1136
+IPO index: 1248 days with valid returns
+VIX data from CBOE: 1535 days
+Tuning over 256 configurations...
+  [1/256] New best: Sharpe=3.69 | {'window_len': 84, 'val_frac': 0.2, 'lr': 0.0003, 'lr_decay': 0.1, 'batch_size': 256, 'hidden_size': 64, 'patience': 50, 'epochs': 50, 'lambda_vol': 0.5, 'lambda_cvar': 0.5, 'lambda_turnover': 0.0, 'lambda_path': 0.0, 'lambda_vol_excess': 0.5, 'target_vol_annual': 0.2}
+  [7/256] New best: Sharpe=3.69 | {'window_len': 84, 'val_frac': 0.2, 'lr': 0.0003, 'lr_decay': 0.1, 'batch_size': 256, 'hidden_size': 64, 'patience': 50, 'epochs': 50, 'lambda_vol': 0.5, 'lambda_cvar': 0.5, 'lambda_turnover': 0.0, 'lambda_path': 0.0001, 'lambda_vol_excess': 1.0, 'target_vol_annual': 0.2}
+  [8/256] New best: Sharpe=3.78 | {'window_len': 84, 'val_frac': 0.2, 'lr': 0.0003, 'lr_decay': 0.1, 'batch_size': 256, 'hidden_size': 64, 'patience': 50, 'epochs': 50, 'lambda_vol': 0.5, 'lambda_cvar': 0.5, 'lambda_turnover': 0.0, 'lambda_path': 0.0001, 'lambda_vol_excess': 1.0, 'target_vol_annual': 0.25}
+  [10/256] Sharpe=3.71
+  [20/256] Sharpe=3.55
+  [30/256] Sharpe=3.53
+  [40/256] Sharpe=3.57
+  [50/256] Sharpe=3.64
+  [60/256] Sharpe=3.65
+  [70/256] Sharpe=3.64
+  [80/256] Sharpe=3.76
+  [90/256] Sharpe=3.45
+  [100/256] Sharpe=3.61
+  [110/256] Sharpe=3.62
+  [120/256] Sharpe=3.60
+  [130/256] Sharpe=3.62
+  [140/256] Sharpe=3.63
+  [150/256] Sharpe=3.40
+  [160/256] Sharpe=3.55
+  [170/256] Sharpe=3.58
+  [180/256] Sharpe=3.54
+  [190/256] Sharpe=3.68
+  [200/256] Sharpe=3.40
+  [210/256] Sharpe=3.57
+  [220/256] Sharpe=3.58
+  [230/256] Sharpe=3.61
+  [240/256] Sharpe=3.49
+  [250/256] Sharpe=3.52
+
+==================================================
+Best config: {
+  "window_len": 84,
+  "val_frac": 0.2,
+  "lr": 0.0003,
+  "lr_decay": 0.1,
+  "batch_size": 256,
+  "hidden_size": 64,
+  "patience": 50,
+  "epochs": 50,
+  "lambda_vol": 0.5,
+  "lambda_cvar": 0.5,
+  "lambda_turnover": 0.0,
+  "lambda_path": 0.0001,
+  "lambda_vol_excess": 1.0,
+  "target_vol_annual": 0.25
+}
+Validation Sharpe: 3.78
+Saved to /Users/oliu/STAT-4830-OSO/results/ipo_optimizer_best_config.json
