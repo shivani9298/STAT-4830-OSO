@@ -4,6 +4,10 @@ docs/figures/*
 !docs/figures/*.tex
 
 local/
+.env 
+.gitattributes
+.DS_Store
+
 
 # Large dataset files
 datasets/
