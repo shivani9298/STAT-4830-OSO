@@ -6,7 +6,6 @@ Forward → portfolio returns → L → backward; validate; save best checkpoint
 from __future__ import annotations
 
 import torch
-import numpy as np
 from pathlib import Path
 from typing import Optional
 
@@ -32,17 +31,17 @@ def train_epoch(
 ) -> tuple[float, dict]:
     model.train()
     n = X.shape[0]
-    perm = np.random.permutation(n)
     total_loss = 0.0
     n_batches = 0
     acc_components = {}
     weights_prev = None
+    # Batches in chronological order (rolling windows by prediction date).
     for start in range(0, n, batch_size):
-        idx = perm[start : start + batch_size]
-        if len(idx) < 2:
+        end = min(start + batch_size, n)
+        if end - start < 2:
             continue
-        x = torch.as_tensor(X[idx], device=device, dtype=torch.float32)
-        r = torch.as_tensor(R[idx], device=device, dtype=torch.float32)
+        x = torch.as_tensor(X[start:end], device=device, dtype=torch.float32)
+        r = torch.as_tensor(R[start:end], device=device, dtype=torch.float32)
         w = model(x)
         prev = weights_prev if (weights_prev is not None and weights_prev.shape[0] == w.shape[0]) else None
         loss, components = combined_loss(
@@ -140,7 +139,6 @@ def train_epoch_sector_heads(
     """R: (N, G, 2); model(x) -> (B, G, 2)."""
     model.train()
     n = X.shape[0]
-    perm = np.random.permutation(n)
     total_loss = 0.0
     n_batches = 0
     acc_components = {}
@@ -156,11 +154,11 @@ def train_epoch_sector_heads(
         target_vol_annual=target_vol_annual,
     )
     for start in range(0, n, batch_size):
-        idx = perm[start : start + batch_size]
-        if len(idx) < 2:
+        end = min(start + batch_size, n)
+        if end - start < 2:
             continue
-        x = torch.as_tensor(X[idx], device=device, dtype=torch.float32)
-        r = torch.as_tensor(R[idx], device=device, dtype=torch.float32)
+        x = torch.as_tensor(X[start:end], device=device, dtype=torch.float32)
+        r = torch.as_tensor(R[start:end], device=device, dtype=torch.float32)
         w = model(x)
         prev = weights_prev if (weights_prev is not None and weights_prev.shape[0] == w.shape[0]) else None
         loss, components = combined_loss_sector_heads(w, r, weights_prev=prev, **loss_kw)
@@ -250,7 +248,7 @@ def run_training_sector_heads(
     log_every: int = 1,
 ) -> tuple[torch.nn.Module, list[dict]]:
     """
-    Train ``SectorMultiHeadAllocator``. Expects ``data`` with
+    Train sector multi-head model (GRU/LSTM or Transformer). Expects ``data`` with
     ``X_train, R_train, X_val, R_val`` and ``R_*`` shape (N, G, 2).
     """
     if device is None:
