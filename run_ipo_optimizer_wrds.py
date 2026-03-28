@@ -4,16 +4,19 @@ Run IPO Portfolio Optimizer on 2005-01-01 to 2024-12-31 (see START_DATE / END_DA
 IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices (split-adjusted).
 Market: Market-cap weighted portfolio of S&P 500 (SPY) and Dow Jones (DIA) from CRSP.
 Uses best config from results/ipo_optimizer_best_config.json if present (from tune_hyperparameters_wrds.py).
+Set ``model_type`` to ``transformer`` in ``best_config``, in gitignored ``local/ipo_optimizer_config.json``,
+or via env ``IPO_MODEL_TYPE=transformer`` (last wins).
 
 When SECTOR_PORTFOLIOS is True (default): Yahoo Finance ``info['sector']`` (cached under
 ``results/ticker_sector_cache.csv``) groups IPOs (e.g. Healthcare, Technology). A mcap-weighted
-IPO basket is built per sector; one GRU encoder feeds separate two-way softmax heads (market vs
+IPO basket is built per sector; one shared encoder (GRU/LSTM or Transformer) feeds separate two-way softmax heads (market vs
 that sector basket). Exports ``results/ipo_optimizer_weights_sector_*.csv`` and
 ``results/ipo_optimizer_summary_by_sector.txt``.
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -83,21 +86,30 @@ DEFAULTS = {
     "min_weight": 0.1,
 }
 
+_CONFIG_OPTIONAL = frozenset({"model_type", "num_layers"})
+
 
 def load_best_config():
     """Load best config from tuning; fall back to DEFAULTS if not found."""
+    cfg = {**DEFAULTS}
     path = ROOT / "results" / "ipo_optimizer_best_config.json"
-    if not path.exists():
-        return DEFAULTS.copy()
-    with open(path) as f:
-        out = json.load(f)
-    best = out.get("best_config")
-    if not best:
-        return DEFAULTS.copy()
-    cfg = DEFAULTS.copy()
-    for k in cfg:
-        if k in best:
-            cfg[k] = best[k]
+    if path.exists():
+        with open(path) as f:
+            out = json.load(f)
+        best = out.get("best_config") or {}
+        for k, v in best.items():
+            if k in cfg or k in _CONFIG_OPTIONAL:
+                cfg[k] = v
+    local_path = ROOT / "local" / "ipo_optimizer_config.json"
+    if local_path.exists():
+        with open(local_path) as f:
+            local = json.load(f)
+        for k, v in local.items():
+            if k in cfg or k in _CONFIG_OPTIONAL:
+                cfg[k] = v
+    mt = os.environ.get("IPO_MODEL_TYPE", "").strip()
+    if mt:
+        cfg["model_type"] = mt
     return cfg
 
 
@@ -401,7 +413,7 @@ def main():
             lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
             target_vol_annual=cfg.get("target_vol_annual", 0.25),
             hidden_size=cfg["hidden_size"],
-            model_type="gru",
+            model_type=cfg.get("model_type", "gru"),
             verbose=True,
             log_every=1,
         )
@@ -420,7 +432,7 @@ def main():
             lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
             target_vol_annual=cfg.get("target_vol_annual", 0.25),
             hidden_size=cfg["hidden_size"],
-            model_type="gru",
+            model_type=cfg.get("model_type", "gru"),
             verbose=True,
             log_every=1,
         )

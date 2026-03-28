@@ -18,6 +18,7 @@ ModuleType = Union[
     "TransformerAllocator",
     "HybridAllocator",
     "SectorMultiHeadAllocator",
+    "SectorMultiHeadTransformerAllocator",
 ]
 
 
@@ -297,6 +298,72 @@ class SectorMultiHeadAllocator(nn.Module):
         return torch.stack(w_list, dim=1)
 
 
+class SectorMultiHeadTransformerAllocator(nn.Module):
+    """
+    Shared Transformer encoder; one MLP head per IPO sector group.
+    Each head outputs a 2-way softmax (market vs that sector's IPO basket).
+
+    Forward: (B, T, F) -> (B, G, 2).
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        n_sectors: int,
+        d_model: int = 64,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dim_feedforward: int = 128,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.n_sectors = n_sectors
+        self.d_model = d_model
+        self.proj = nn.Linear(input_size, d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=False,
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.heads = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(d_model, d_model),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(d_model, 2),
+                )
+                for _ in range(n_sectors)
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        T = x.size(1)
+        x = self.proj(x)
+        pe = self._positional_encoding(T, x.device)
+        x = x + pe
+        x = self.transformer(x)
+        h = x[:, -1, :]
+        w_list = []
+        for head in self.heads:
+            logits = head(h)
+            w_list.append(torch.softmax(logits, dim=-1))
+        return torch.stack(w_list, dim=1)
+
+    def _positional_encoding(self, seq_len: int, device: torch.device) -> torch.Tensor:
+        pe = torch.zeros(1, seq_len, self.d_model, device=device, dtype=torch.float32)
+        for i in range(seq_len):
+            for j in range(0, self.d_model, 2):
+                pe[0, i, j] = math.sin(i / 10000 ** (j / self.d_model))
+                if j + 1 < self.d_model:
+                    pe[0, i, j + 1] = math.cos(i / 10000 ** (j / self.d_model))
+        return pe
+
+
 def build_model(
     n_features: int,
     n_assets: int = 2,
@@ -353,8 +420,20 @@ def build_sector_head_model(
     num_layers: int = 1,
     model_type: str = "gru",
     dropout: float = 0.1,
-) -> SectorMultiHeadAllocator:
-    """GRU multi-head allocator (``model_type`` gru/lstm only)."""
+) -> nn.Module:
+    """
+    Multi-head allocator over sectors: ``model_type`` = ``gru`` | ``lstm`` | ``transformer``.
+    """
+    if model_type == "transformer":
+        return SectorMultiHeadTransformerAllocator(
+            input_size=n_features,
+            n_sectors=n_sectors,
+            d_model=hidden_size,
+            nhead=4,
+            num_layers=min(2, num_layers + 1),
+            dim_feedforward=hidden_size * 2,
+            dropout=dropout,
+        )
     rnn = "lstm" if model_type == "lstm" else "gru"
     return SectorMultiHeadAllocator(
         input_size=n_features,
