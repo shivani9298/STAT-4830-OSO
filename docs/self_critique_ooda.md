@@ -1,31 +1,35 @@
-# Self-Critique (OODA) - IPO Optimizer Normalization
+# Self-Critique (OODA) - IPO Optimizer Status
 
 ## Observe
-I reviewed the current `olivia` branch after rerunning the sector-head pipeline with the 2010-2024 sample and a forced 252-day context window. The run completed and regenerated training artifacts, but the branch accumulated mixed code, caches, and outputs from multiple debugging cycles. My first reaction is that we now have a working configuration, but reproducibility and change hygiene lag behind model iteration speed.
+The repository is currently stable and runnable: sector-capable code is in place, 126-day comparison artifacts are preserved, and the 252-day outputs are available in `figures/` and `results/`.
+
+From the 252-day figures, the pattern is mixed. Training loss drops quickly at first, but validation improvement slows and becomes noisy, with a worse convergence floor than the 126-day setup. The semilog plots show early progress followed by flattening, and `validation_objective` looks regime-sensitive rather than steadily improving.
+
+We also added a global multisector allocator (single softmax over market + sector sleeves). It trains end-to-end and generates clean outputs, but current results are still moderate rather than clearly superior. In addition, we tested a transformer-based architecture as an alternative model class; it did not show meaningfully better convergence efficiency, and validation loss did not improve enough to justify switching from the current baseline.
 
 ## Orient
 
 ### Strengths
-- Achieved an end-to-end sector-capable run on the expanded 2010-2024 data with updated loss plots and sector summaries.
-- Recovered compatibility across runner and `src/*` APIs after branch drift, enabling training without ad hoc manual edits.
-- Preserved historical context by keeping 126-day comparison artifacts alongside the 252-day setup.
+- The 2010-2024 pipeline runs end-to-end with sector portfolios and exports complete outputs. Overall validation loss looks better than previous training on only 2020-2024 data.
+- Multiple model variants were tested (GRU baseline, transformer trial, and global multisector allocator), so comparisons are now more informative.
+- Branch cleanup reduced clutter from cache artifacts and made the training state easier to review.
 
 ### Areas for Improvement
-- Configuration control is too implicit: context window and split behavior can still drift between code defaults, tuning outputs, and runtime overrides.
-- Data/feature assumptions are under-tested: sector assignment quality (many ticker lookup misses) and index-construction robustness need explicit validation checks.
-- Repo cleanliness is inconsistent: generated artifacts and cache churn obscure intentional code changes and complicate review.
+- Figure interpretation is mostly qualitative; we need a small set of standard numeric diagnostics tied to each plot.
+- Sector metadata quality is not tracked as a first-class metric, even though it affects downstream behavior.
+- Transformer and multisector experiments need a tighter evaluation protocol so we can clearly explain when a new architecture is actually better.
 
 ### Critical Risks/Assumptions
-The current approach assumes Yahoo sector metadata is sufficiently stable and that missing sectors do not bias allocation behavior; this may not hold across older or delisted IPO tickers. It also assumes objective values are comparable across context windows despite differing volatility regimes and sample composition. Without a fixed experiment manifest, we risk attributing performance changes to model choices when they are partly data-pipeline differences.
+We still assume missing or stale sector labels do not materially bias sector sleeves, which may be false for older/delisted names. We also assume objective values are directly comparable across context windows even when volatility regimes differ. If these assumptions are wrong, model comparisons can look better or worse for the wrong reasons.
 
 ## Decide
 
 ### Concrete Next Actions
-- Add a single experiment manifest file (window length, date bounds, split points, sector mode, loss weights) that is logged into `results/` for every run.
-- Implement pre-training data QA checks (sector coverage %, missing-ticker report, per-sector sample counts) and fail fast when thresholds are violated.
-- Split outputs into `tracked reports` vs `ignored runtime artifacts`, then enforce with a lightweight pre-commit check for cache/pyc pollution.
+- Train/learn the sector labels and attempt to classify undetermined names.
+- Add three mandatory diagnostics after every run: best epoch, validation-loss stability (rolling std), and sector-coverage summary.
+- Add a short comparison script that reports deltas between 126-day and 252-day runs before accepting new results.
 
 ## Act
 
 ### Resource Needs
-I need one focused pass on experiment management patterns (Hydra-style config discipline or an equivalent lightweight JSON/YAML registry) to eliminate hidden parameter drift. I also need a short validation checklist for financial time-series experiments (coverage diagnostics, embargo checks, leakage tests) to standardize run acceptance criteria. The only external help needed is quick alignment on which artifacts are intended to be versioned versus reproducible outputs regenerated on demand.
+As we expand our dataset, we plan to leverage our GPU credits during the training process.

@@ -1,0 +1,36 @@
+Global Multi-Sector Allocator - Summary
+======================================
+Assets: market, sector_Unknown, sector_Healthcare, sector_Financial Services, sector_Technology, sector_Consumer Cyclical, sector_Industrials, sector_Communication Services, sector_Real Estate, sector_Consumer Defensive, sector_Energy, sector_Basic Materials
+Mean daily return:     0.0744%
+Volatility (daily):    1.3893%
+Sharpe (annualized):   0.85
+Max drawdown:          -31.09%
+Avg turnover:          0.0001
+
+Average weights by asset:
+  market                   61.95%
+  sector_Unknown           2.76%
+  sector_Healthcare        1.60%
+  sector_Financial Services 0.33%
+  sector_Technology        0.41%
+  sector_Consumer Cyclical 9.76%
+  sector_Industrials       6.53%
+  sector_Communication Services 3.98%
+  sector_Real Estate       0.94%
+  sector_Consumer Defensive 4.41%
+  sector_Energy            0.22%
+  sector_Basic Materials   7.10%
+
+Peak weights by asset:
+  market                   61.99%
+  sector_Unknown           2.76%
+  sector_Healthcare        1.61%
+  sector_Financial Services 0.33%
+  sector_Technology        0.41%
+  sector_Consumer Cyclical 9.77%
+  sector_Industrials       6.53%
+  sector_Communication Services 3.98%
+  sector_Real Estate       0.94%
+  sector_Consumer Defensive 4.42%
+  sector_Energy            0.22%
+  sector_Basic Materials   7.11%
