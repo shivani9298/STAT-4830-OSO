@@ -1,0 +1,7 @@
+126-day snapshot recovered from HEAD (pre-252 retrain)
+252-day run is current working-tree outputs.
+
+Key setup:
+- 126-day: window_len=126, val_frac=0.20
+- 252-day: window_len=252, val_frac=0.20
+- both: WRDS-based run_ipo_optimizer_wrds pipeline

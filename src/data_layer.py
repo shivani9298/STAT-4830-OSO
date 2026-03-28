@@ -113,11 +113,16 @@ def align_returns(
     market: pd.Series,
     ipo: pd.Series,
     drop_na: bool = True,
+    clip_market: tuple[float, float] = (-0.10, 0.10),
+    clip_ipo: tuple[float, float] = (-0.50, 0.50),
 ) -> pd.DataFrame:
     """
     Align market and IPO return series to a common date index.
+    Clips extreme returns: market ±10% (diversified rarely >10%/day), IPO ±50%.
     """
     df = pd.DataFrame({"market_return": market, "ipo_return": ipo})
+    df["market_return"] = df["market_return"].clip(lower=clip_market[0], upper=clip_market[1])
+    df["ipo_return"] = df["ipo_return"].clip(lower=clip_ipo[0], upper=clip_ipo[1])
     df = df.sort_index()
     if drop_na:
         df = df.dropna()
@@ -183,6 +188,50 @@ def build_rolling_windows(
     return X, R, dates
 
 
+def build_rolling_windows_sector_heads(
+    df: pd.DataFrame,
+    window_len: int,
+    feature_cols: list[str],
+    sector_ret_cols: list[str],
+    market_col: str = "market_return",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Rolling windows for a shared encoder with **per-sector portfolios** (each head: market vs that sector's IPO basket).
+
+    Returns:
+        X: (N, T, F)
+        R: (N, G, 2) — for each sector g, [:, g, 0] = market return, [:, g, 1] = sector IPO basket return
+        dates: (N,) prediction dates
+    """
+    arr = df[feature_cols].values.astype(np.float32)
+    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+    mkt = df[market_col].values.astype(np.float32)
+    mkt = np.nan_to_num(mkt, nan=0.0, posinf=0.0, neginf=0.0)
+    sec = np.stack([df[c].values.astype(np.float32) for c in sector_ret_cols], axis=1)
+    sec = np.nan_to_num(sec, nan=0.0, posinf=0.0, neginf=0.0)
+    n = len(df)
+    g = len(sector_ret_cols)
+    if n <= window_len or g == 0:
+        return (
+            np.zeros((0, window_len, len(feature_cols)), np.float32),
+            np.zeros((0, g, 2), np.float32),
+            np.array([], dtype=object),
+        )
+    X_list = []
+    R_list = []
+    dates_list = []
+    for i in range(window_len, n):
+        X_list.append(arr[i - window_len : i])
+        m_row = np.full((g,), mkt[i], dtype=np.float32)
+        r_g = np.stack([m_row, sec[i, :]], axis=1)
+        R_list.append(r_g)
+        dates_list.append(df.index[i])
+    X = np.stack(X_list, axis=0)
+    R = np.stack(R_list, axis=0)
+    dates = np.array(dates_list)
+    return X, R, dates
+
+
 def train_val_split(
     X: np.ndarray,
     R: np.ndarray,
@@ -208,6 +257,97 @@ def train_val_split(
     X_train, R_train, d_train = X[train_mask], R[train_mask], dates[train_mask]
     X_val, R_val, d_val = X[val_mask], R[val_mask], dates[val_mask]
     return X_train, R_train, d_train, X_val, R_val, d_val
+
+
+def train_val_test_split(
+    X: np.ndarray,
+    R: np.ndarray,
+    dates: np.ndarray,
+    val_start: str,
+    test_start: str,
+    *,
+    df_index: Optional[pd.DatetimeIndex] = None,
+    window_len: Optional[int] = None,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """
+    Split rolling windows by prediction date into train, validation, and test.
+
+    If ``df_index`` and ``window_len`` are provided, applies an **embargo** so that
+    the calendar span of inputs for one split does not overlap the prediction dates
+    of the next split (no shared rows between a window's past and another split's
+    label period). Concretely:
+
+    - **Train** only includes windows whose prediction date is strictly before
+      ``df_index[val_pos - window_len]`` (``val_pos`` = first index with date >= val_start).
+    - **Validation** includes prediction dates in ``[val_start, val_end_exclusive)``
+      where ``val_end_exclusive = min(test_start, df_index[test_pos - window_len])``.
+    - **Test** includes prediction dates ``>= test_start``.
+
+    Rows whose prediction date falls only in an embargo gap (between val and test)
+    are excluded from val and test; they are not used for training either.
+
+    If ``df_index`` or ``window_len`` is omitted, falls back to label-only boundaries
+    (train < val_start; val in [val_start, test_start); test >= test_start) without embargo.
+    """
+    n = len(dates)
+    if n == 0:
+        empty = X[:0], R[:0], dates[:0]
+        return (*empty, *empty, *empty)
+    val_ts = pd.Timestamp(val_start)
+    test_ts = pd.Timestamp(test_start)
+    if not (val_ts < test_ts):
+        raise ValueError("val_start must be strictly before test_start")
+
+    d = pd.to_datetime(dates)
+
+    if df_index is not None and window_len is not None and window_len > 0:
+        idx = pd.DatetimeIndex(df_index).sort_values()
+        val_pos = int(idx.searchsorted(val_ts))
+        test_pos = int(idx.searchsorted(test_ts))
+        if val_pos < window_len:
+            raise ValueError(
+                f"Not enough history before val_start for window_len={window_len}: "
+                f"need val_pos >= window_len (val_pos={val_pos})."
+            )
+        if test_pos < window_len:
+            raise ValueError(
+                f"Not enough history before test_start for window_len={window_len}: "
+                f"need test_pos >= window_len (test_pos={test_pos})."
+            )
+        if test_pos <= val_pos:
+            raise ValueError("test_start must be after val_start on the data index.")
+
+        train_end_exclusive = idx[val_pos - window_len]
+        embargo_before_test = idx[test_pos - window_len]
+        val_end_exclusive = min(test_ts, embargo_before_test)
+        if val_end_exclusive <= val_ts:
+            raise ValueError(
+                f"No validation window after embargo: val_end_exclusive={val_end_exclusive} "
+                f"<= val_start={val_ts}. Space out val_start and test_start or reduce window_len."
+            )
+
+        train_mask = d < train_end_exclusive
+        val_mask = (d >= val_ts) & (d < val_end_exclusive)
+        test_mask = d >= test_ts
+    else:
+        train_mask = d < val_ts
+        val_mask = (d >= val_ts) & (d < test_ts)
+        test_mask = d >= test_ts
+
+    X_train, R_train, d_train = X[train_mask], R[train_mask], dates[train_mask]
+    X_val, R_val, d_val = X[val_mask], R[val_mask], dates[val_mask]
+    X_test, R_test, d_test = X[test_mask], R[test_mask], dates[test_mask]
+    return X_train, R_train, d_train, X_val, R_val, d_val, X_test, R_test, d_test
 
 
 def get_data(

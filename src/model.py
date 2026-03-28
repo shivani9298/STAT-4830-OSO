@@ -12,7 +12,13 @@ import torch
 import torch.nn as nn
 from typing import Literal, Union
 
-ModuleType = Union["AllocatorNet", "MLPAllocator", "TransformerAllocator", "HybridAllocator"]
+ModuleType = Union[
+    "AllocatorNet",
+    "MLPAllocator",
+    "TransformerAllocator",
+    "HybridAllocator",
+    "SectorMultiHeadAllocator",
+]
 
 
 class AllocatorNet(nn.Module):
@@ -231,6 +237,66 @@ class HybridAllocator(nn.Module):
         return torch.softmax(logits, dim=-1)
 
 
+class SectorMultiHeadAllocator(nn.Module):
+    """
+    Shared GRU encoder; one MLP head per IPO sector group.
+    Each head outputs a 2-way softmax (market vs that sector's IPO basket).
+
+    Forward: (B, T, F) -> (B, G, 2).
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        n_sectors: int,
+        hidden_size: int = 64,
+        num_layers: int = 1,
+        rnn_type: Literal["gru", "lstm"] = "gru",
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.n_sectors = n_sectors
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        if rnn_type == "gru":
+            self.rnn = nn.GRU(
+                input_size,
+                hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0,
+            )
+        else:
+            self.rnn = nn.LSTM(
+                input_size,
+                hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0,
+            )
+        self.rnn_type = rnn_type
+        self.heads = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(hidden_size, hidden_size),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(hidden_size, 2),
+                )
+                for _ in range(n_sectors)
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out, _ = self.rnn(x)
+        h = out[:, -1, :]
+        w_list = []
+        for head in self.heads:
+            logits = head(h)
+            w_list.append(torch.softmax(logits, dim=-1))
+        return torch.stack(w_list, dim=1)
+
+
 def build_model(
     n_features: int,
     n_assets: int = 2,
@@ -272,6 +338,27 @@ def build_model(
     return AllocatorNet(
         input_size=n_features,
         n_assets=n_assets,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        rnn_type=rnn,
+        dropout=dropout,
+    )
+
+
+def build_sector_head_model(
+    n_features: int,
+    n_sectors: int,
+    seq_len: int = 252,
+    hidden_size: int = 64,
+    num_layers: int = 1,
+    model_type: str = "gru",
+    dropout: float = 0.1,
+) -> SectorMultiHeadAllocator:
+    """GRU multi-head allocator (``model_type`` gru/lstm only)."""
+    rnn = "lstm" if model_type == "lstm" else "gru"
+    return SectorMultiHeadAllocator(
+        input_size=n_features,
+        n_sectors=n_sectors,
         hidden_size=hidden_size,
         num_layers=num_layers,
         rnn_type=rnn,

@@ -14,3 +14,7 @@ __pycache__/
 .venv/
 venv/
 output/
+
+# Local runtime caches/artifacts
+.cache/
+results/ticker_sector_cache.csv
