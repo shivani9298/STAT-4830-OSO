@@ -1,0 +1,3 @@
+GRU vs LSTM — same data, same hyperparameters (model_type differs only)
+GRU: Sharpe=3.57  MaxDD=-7.27%  TotalRet=79.14%  epochs=200
+LSTM: Sharpe=3.70  MaxDD=-7.19%  TotalRet=95.13%  epochs=200
