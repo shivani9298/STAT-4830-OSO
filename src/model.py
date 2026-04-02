@@ -116,6 +116,33 @@ class MLPAllocator(nn.Module):
         return torch.softmax(logits, dim=-1)
 
 
+class AttentionCapturingEncoderLayer(nn.TransformerEncoderLayer):
+    """
+    Like ``TransformerEncoderLayer`` but runs self-attention with ``need_weights=True``
+    so ``last_attn`` holds averaged head weights (batch, T, T) after each forward.
+    """
+
+    def _sa_block(
+        self,
+        x: torch.Tensor,
+        attn_mask: torch.Tensor | None,
+        key_padding_mask: torch.Tensor | None,
+        is_causal: bool = False,
+    ) -> torch.Tensor:
+        attn_out, attn_w = self.self_attn(
+            x,
+            x,
+            x,
+            attn_mask=attn_mask,
+            key_padding_mask=key_padding_mask,
+            need_weights=True,
+            average_attn_weights=True,
+            is_causal=is_causal,
+        )
+        self.last_attn = attn_w.detach()
+        return self.dropout1(attn_out)
+
+
 class TransformerAllocator(nn.Module):
     """
     Positional encoding + transformer encoder → pool (last token) → MLP → softmax → weights.
@@ -135,7 +162,7 @@ class TransformerAllocator(nn.Module):
         self.n_assets = n_assets
         self.d_model = d_model
         self.proj = nn.Linear(input_size, d_model)
-        encoder_layer = nn.TransformerEncoderLayer(
+        encoder_layer = AttentionCapturingEncoderLayer(
             d_model=d_model,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
@@ -160,6 +187,36 @@ class TransformerAllocator(nn.Module):
         last = x[:, -1, :]
         logits = self.mlp(last)
         return torch.softmax(logits, dim=-1)
+
+    @torch.no_grad()
+    def attention_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """
+        Self-attention weights per encoder layer after projecting + PE.
+
+        Each tensor has shape ``(batch, T, T)`` (query position vs key position),
+        heads averaged. Requires disabling the MHA fused fast path (handled here).
+
+        Parameters
+        ----------
+        x : (B, T, F)
+        """
+        prev = torch.backends.mha.get_fastpath_enabled()
+        torch.backends.mha.set_fastpath_enabled(False)
+        try:
+            self.eval()
+            b, t, _f = x.shape
+            h = self.proj(x)
+            pe = self._positional_encoding(t, h.device)
+            h = h + pe
+            _ = self.transformer(h)
+            out = []
+            for layer in self.transformer.layers:
+                la = getattr(layer, "last_attn", None)
+                if la is not None:
+                    out.append(la)
+            return out
+        finally:
+            torch.backends.mha.set_fastpath_enabled(prev)
 
     def _positional_encoding(self, seq_len: int, device: torch.device) -> torch.Tensor:
         pe = torch.zeros(1, seq_len, self.d_model, device=device, dtype=torch.float32)
@@ -320,7 +377,7 @@ class SectorMultiHeadTransformerAllocator(nn.Module):
         self.n_sectors = n_sectors
         self.d_model = d_model
         self.proj = nn.Linear(input_size, d_model)
-        encoder_layer = nn.TransformerEncoderLayer(
+        encoder_layer = AttentionCapturingEncoderLayer(
             d_model=d_model,
             nhead=nhead,
             dim_feedforward=dim_feedforward,
@@ -353,6 +410,27 @@ class SectorMultiHeadTransformerAllocator(nn.Module):
             logits = head(h)
             w_list.append(torch.softmax(logits, dim=-1))
         return torch.stack(w_list, dim=1)
+
+    @torch.no_grad()
+    def attention_maps(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Same semantics as :meth:`TransformerAllocator.attention_maps`."""
+        prev = torch.backends.mha.get_fastpath_enabled()
+        torch.backends.mha.set_fastpath_enabled(False)
+        try:
+            self.eval()
+            t = x.size(1)
+            h = self.proj(x)
+            pe = self._positional_encoding(t, h.device)
+            h = h + pe
+            _ = self.transformer(h)
+            out = []
+            for layer in self.transformer.layers:
+                la = getattr(layer, "last_attn", None)
+                if la is not None:
+                    out.append(la)
+            return out
+        finally:
+            torch.backends.mha.set_fastpath_enabled(prev)
 
     def _positional_encoding(self, seq_len: int, device: torch.device) -> torch.Tensor:
         pe = torch.zeros(1, seq_len, self.d_model, device=device, dtype=torch.float32)

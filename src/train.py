@@ -246,6 +246,9 @@ def run_training_sector_heads(
     model_type: str = "gru",
     verbose: bool = True,
     log_every: int = 1,
+    weight_decay: float = 1e-5,
+    dropout: float = 0.1,
+    cosine_lr: bool = False,
 ) -> tuple[torch.nn.Module, list[dict]]:
     """
     Train sector multi-head model (GRU/LSTM or Transformer). Expects ``data`` with
@@ -268,8 +271,12 @@ def run_training_sector_heads(
         hidden_size=hidden_size,
         num_layers=num_layers,
         model_type=model_type,
+        dropout=dropout,
     ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = None
+    if cosine_lr:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))
 
     best_val_loss = float("inf")
     best_state = None
@@ -322,6 +329,9 @@ def run_training_sector_heads(
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
+
+        if scheduler is not None:
+            scheduler.step()
 
         if verbose and log_every > 0:
             ep = epoch + 1
@@ -378,6 +388,9 @@ def run_training(
     model_type: str = "gru",
     verbose: bool = True,
     log_every: int = 1,
+    weight_decay: float = 1e-5,
+    dropout: float = 0.1,
+    cosine_lr: bool = False,
 ) -> tuple[torch.nn.Module, list[dict]]:
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -396,8 +409,12 @@ def run_training(
         hidden_size=hidden_size,
         num_layers=num_layers,
         model_type=model_type,
+        dropout=dropout,
     ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = None
+    if cosine_lr:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, epochs))
 
     best_val_loss = float("inf")
     best_state = None
@@ -450,6 +467,9 @@ def run_training(
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
+
+        if scheduler is not None:
+            scheduler.step()
 
         if verbose and log_every > 0:
             ep = epoch + 1

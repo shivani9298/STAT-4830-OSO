@@ -5,7 +5,12 @@ IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices
 Market: Market-cap weighted portfolio of S&P 500 (SPY) and Dow Jones (DIA) from CRSP.
 Uses best config from results/ipo_optimizer_best_config.json if present (from tune_hyperparameters_wrds.py).
 Set ``model_type`` to ``transformer`` in ``best_config``, in gitignored ``local/ipo_optimizer_config.json``,
-or via env ``IPO_MODEL_TYPE=transformer`` (last wins).
+or via env ``IPO_MODEL_TYPE=transformer``. When ``model_type`` is ``transformer``, ``TRANSFORMER_CONFIG``
+(lr, batch_size, lambda_cvar, hidden_size, weight_decay, dropout, cosine_lr) is merged after ``best_config``;
+``local/ipo_optimizer_config.json`` is applied last so you can override any key.
+Set ``IPO_EXPORT_ATTENTION=1`` to save self-attention maps (``results/ipo_optimizer_attention.npz`` and
+``figures/ipo_optimizer_attention_layer0.png``) when ``model_type`` is ``transformer``.
+Set ``IPO_SECTOR_PORTFOLIOS=0`` for a single market-vs-IPO index (overrides ``SECTOR_PORTFOLIOS``).
 
 When SECTOR_PORTFOLIOS is True (default): Yahoo Finance ``info['sector']`` (cached under
 ``results/ticker_sector_cache.csv``) groups IPOs (e.g. Healthcare, Technology). A mcap-weighted
@@ -22,6 +27,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
+except ImportError:
+    pass
 
 import numpy as np
 import pandas as pd
@@ -84,9 +96,25 @@ DEFAULTS = {
     "hidden_size": 64,
     "lambda_diversify": 0.0,
     "min_weight": 0.1,
+    "weight_decay": 1e-5,
+    "dropout": 0.1,
+    "cosine_lr": False,
 }
 
-_CONFIG_OPTIONAL = frozenset({"model_type", "num_layers"})
+# Applied when ``model_type`` is ``transformer`` (after JSON / local overrides), so GRU/LSTM defaults stay unchanged.
+TRANSFORMER_CONFIG = {
+    "lr": 3e-4,
+    "batch_size": 64,
+    "lambda_cvar": 1.0,
+    "hidden_size": 128,
+    "weight_decay": 1e-2,
+    "dropout": 0.1,
+    "cosine_lr": False,
+}
+
+_CONFIG_OPTIONAL = frozenset(
+    {"model_type", "num_layers", "weight_decay", "dropout", "cosine_lr"}
+)
 
 
 def load_best_config():
@@ -100,6 +128,11 @@ def load_best_config():
         for k, v in best.items():
             if k in cfg or k in _CONFIG_OPTIONAL:
                 cfg[k] = v
+    mt = os.environ.get("IPO_MODEL_TYPE", "").strip()
+    if mt:
+        cfg["model_type"] = mt
+    if cfg.get("model_type") == "transformer":
+        cfg.update(TRANSFORMER_CONFIG)
     local_path = ROOT / "local" / "ipo_optimizer_config.json"
     if local_path.exists():
         with open(local_path) as f:
@@ -107,10 +140,17 @@ def load_best_config():
         for k, v in local.items():
             if k in cfg or k in _CONFIG_OPTIONAL:
                 cfg[k] = v
-    mt = os.environ.get("IPO_MODEL_TYPE", "").strip()
-    if mt:
-        cfg["model_type"] = mt
     return cfg
+
+
+def sector_portfolios_effective() -> bool:
+    """If ``IPO_SECTOR_PORTFOLIOS`` is set, use it; else ``SECTOR_PORTFOLIOS``."""
+    v = os.environ.get("IPO_SECTOR_PORTFOLIOS", "").strip().lower()
+    if v in ("0", "false", "no", "off"):
+        return False
+    if v in ("1", "true", "yes", "on"):
+        return True
+    return SECTOR_PORTFOLIOS
 
 
 def build_ipo_index_mcap(
@@ -353,7 +393,12 @@ def main():
     )
 
     try:
-        data_prep = prepare_data(conn, sector_portfolios=SECTOR_PORTFOLIOS)
+        sp = sector_portfolios_effective()
+        print(
+            f"[IPO] sector_portfolios={sp}  (env IPO_SECTOR_PORTFOLIOS or SECTOR_PORTFOLIOS={SECTOR_PORTFOLIOS})",
+            flush=True,
+        )
+        data_prep = prepare_data(conn, sector_portfolios=sp)
     finally:
         close_wrds_connection(conn)
     df = data_prep["df"]
@@ -416,6 +461,9 @@ def main():
             model_type=cfg.get("model_type", "gru"),
             verbose=True,
             log_every=1,
+            weight_decay=cfg.get("weight_decay", 1e-5),
+            dropout=cfg.get("dropout", 0.1),
+            cosine_lr=cfg.get("cosine_lr", False),
         )
     else:
         model, history = run_training(
@@ -435,6 +483,9 @@ def main():
             model_type=cfg.get("model_type", "gru"),
             verbose=True,
             log_every=1,
+            weight_decay=cfg.get("weight_decay", 1e-5),
+            dropout=cfg.get("dropout", 0.1),
+            cosine_lr=cfg.get("cosine_lr", False),
         )
     print(f"Trained for {len(history)} epochs")
 
@@ -463,6 +514,33 @@ def main():
 
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
+
+    if os.environ.get("IPO_EXPORT_ATTENTION", "").strip().lower() in ("1", "true", "yes"):
+        if cfg.get("model_type") == "transformer":
+            from src.attention_export import save_attention_heatmap_png, save_attention_npz
+            from src.model import SectorMultiHeadTransformerAllocator, TransformerAllocator
+
+            if isinstance(model, (TransformerAllocator, SectorMultiHeadTransformerAllocator)):
+                n = min(32, int(data["X_val"].shape[0]))
+                x_s = torch.as_tensor(data["X_val"][:n], device=device, dtype=torch.float32)
+                ap = out_dir / "ipo_optimizer_attention.npz"
+                _, maps = save_attention_npz(
+                    model,
+                    x_s,
+                    ap,
+                    meta={"window_len": str(cfg["window_len"]), "batch": str(n)},
+                )
+                if maps:
+                    save_attention_heatmap_png(
+                        maps[0],
+                        ROOT / "figures" / "ipo_optimizer_attention_layer0.png",
+                        title="Layer 0 self-attention (mean over batch)",
+                    )
+                print(
+                    f"[IPO] Saved attention to {ap} and "
+                    f"{ROOT / 'figures' / 'ipo_optimizer_attention_layer0.png'}",
+                    flush=True,
+                )
 
     if use_sectors:
         weights = predict_sector_head_weights(model, data["X_val"], device)
