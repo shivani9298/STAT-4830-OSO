@@ -30,6 +30,7 @@ from src.wrds_data import (
     get_connection,
     load_ipo_data_from_sdc_wrds,
     load_market_returns_wrds,
+    load_sector_labels_wrds,
     load_sdc_ipo_dates_wrds,
     load_sp500_dow_market_returns_wrds,
     load_stock_returns_wrds,
@@ -264,7 +265,23 @@ def prepare_data(
 
     if sector_portfolios:
         cache = ROOT / "results" / "ticker_sector_cache.csv"
-        sec_series = fetch_ticker_sectors(ipo_tickers, cache_path=cache, verbose=True)
+        print("[IPO] Loading sector labels from WRDS (Compustat/CRSP)...", flush=True)
+        sec_wrds = load_sector_labels_wrds(conn, ipo_tickers, start=start, end=end)
+        known_wrds = int((sec_wrds != "Unknown").sum()) if len(sec_wrds) else 0
+        print(f"[IPO] WRDS sector coverage: {known_wrds}/{len(sec_wrds)}", flush=True)
+
+        missing = [t for t in ipo_tickers if sec_wrds.get(str(t).upper().replace(".", "-"), "Unknown") == "Unknown"]
+        sec_series = sec_wrds.copy()
+        if missing:
+            print(f"[IPO] Falling back to Yahoo sectors for {len(missing)} unresolved tickers...", flush=True)
+            sec_yf = fetch_ticker_sectors(missing, cache_path=cache, verbose=True)
+            for t in sec_series.index:
+                if sec_series.at[t] == "Unknown":
+                    sec_series.at[t] = sec_yf.get(t, "Unknown")
+        sec_series.name = "sector"
+        sec_series.index.name = "ticker"
+        resolved_total = int((sec_series != "Unknown").sum()) if len(sec_series) else 0
+        print(f"[IPO] Combined sector coverage: {resolved_total}/{len(sec_series)}", flush=True)
         groups = group_tickers_by_sector(
             ipo_tickers, sec_series, min_names=MIN_TICKERS_PER_SECTOR_GROUP
         )

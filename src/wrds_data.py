@@ -203,6 +203,162 @@ def get_connection(
     return wrds.Connection(wrds_username=username)
 
 
+def _gics_sector_name_from_code(code) -> str:
+    """Map GICS sector code to the project sector labels."""
+    mapping = {
+        10: "Energy",
+        15: "Basic Materials",
+        20: "Industrials",
+        25: "Consumer Cyclical",
+        30: "Consumer Defensive",
+        35: "Healthcare",
+        40: "Financial Services",
+        45: "Technology",
+        50: "Communication Services",
+        55: "Utilities",
+        60: "Real Estate",
+    }
+    try:
+        c = int(code)
+    except Exception:
+        return "Unknown"
+    return mapping.get(c, "Unknown")
+
+
+def _sic_to_sector_label(sic) -> str:
+    """Coarse SIC-to-sector mapping used when GICS is unavailable."""
+    try:
+        s = int(sic)
+    except Exception:
+        return "Unknown"
+    if 100 <= s <= 1499:
+        return "Basic Materials"
+    if 1500 <= s <= 1799:
+        return "Industrials"
+    if 2000 <= s <= 2399:
+        return "Consumer Defensive"
+    if 2500 <= s <= 3999:
+        return "Industrials"
+    if 4000 <= s <= 4999:
+        return "Industrials"
+    if 5000 <= s <= 5999:
+        return "Consumer Cyclical"
+    if 6000 <= s <= 6999:
+        return "Financial Services"
+    if 7000 <= s <= 7999:
+        return "Communication Services"
+    if 8000 <= s <= 8999:
+        return "Healthcare"
+    if 4900 <= s <= 4949:
+        return "Utilities"
+    return "Unknown"
+
+
+def load_sector_labels_wrds(
+    conn,
+    tickers: list[str],
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    chunk_size: int = 600,
+) -> pd.Series:
+    """
+    Fetch sector labels from WRDS (Compustat first, CRSP SIC fallback).
+
+    Returns a Series indexed by normalized ticker (upper, '.' -> '-') with values in the
+    project label space (e.g., Technology, Healthcare, Financial Services, ...).
+    """
+    norm = sorted(set(str(t).upper().replace(".", "-") for t in tickers if t))
+    if not norm:
+        out = pd.Series(dtype=object, name="sector")
+        out.index.name = "ticker"
+        return out
+
+    start_d = start or "1900-01-01"
+    end_d = end or "2099-12-31"
+
+    def _chunks(vals: list[str], n: int):
+        for i in range(0, len(vals), n):
+            yield vals[i : i + n]
+
+    comp_rows = []
+    for ch in _chunks(norm, chunk_size):
+        in_list = "','".join(t.replace("'", "''") for t in ch)
+        sql = f"""
+            SELECT
+                UPPER(REPLACE(s.tic, '.', '-')) AS ticker,
+                c.gsector,
+                c.sic
+            FROM comp.security s
+            LEFT JOIN comp.company c
+              ON c.gvkey = s.gvkey
+            WHERE s.tic IN ('{in_list}')
+        """
+        try:
+            df = conn.raw_sql(sql)
+            if len(df) > 0:
+                comp_rows.append(df)
+        except Exception:
+            continue
+
+    comp = pd.concat(comp_rows, ignore_index=True) if comp_rows else pd.DataFrame(columns=["ticker", "gsector", "sic"])
+    comp_map: dict[str, str] = {}
+    if len(comp) > 0:
+        comp["ticker"] = comp["ticker"].astype(str).str.upper()
+        comp = comp.drop_duplicates(subset=["ticker", "gsector", "sic"])
+        for _, row in comp.iterrows():
+            t = str(row.get("ticker", "")).upper()
+            if not t:
+                continue
+            lab = _gics_sector_name_from_code(row.get("gsector"))
+            if lab == "Unknown":
+                lab = _sic_to_sector_label(row.get("sic"))
+            if t not in comp_map or comp_map[t] == "Unknown":
+                comp_map[t] = lab
+
+    crsp_rows = []
+    for ch in _chunks(norm, chunk_size):
+        in_list = "','".join(t.replace("'", "''") for t in ch)
+        sql = f"""
+            SELECT
+                UPPER(REPLACE(ticker, '.', '-')) AS ticker,
+                siccd,
+                namedt,
+                nameendt
+            FROM crsp.dsenames
+            WHERE ticker IN ('{in_list}')
+              AND namedt <= '{end_d}'
+              AND (nameendt IS NULL OR nameendt >= '{start_d}')
+        """
+        try:
+            df = conn.raw_sql(sql, date_cols=["namedt", "nameendt"])
+            if len(df) > 0:
+                crsp_rows.append(df)
+        except Exception:
+            continue
+
+    crsp = pd.concat(crsp_rows, ignore_index=True) if crsp_rows else pd.DataFrame(columns=["ticker", "siccd", "namedt"])
+    crsp_map: dict[str, str] = {}
+    if len(crsp) > 0:
+        crsp["ticker"] = crsp["ticker"].astype(str).str.upper()
+        crsp = crsp.sort_values(["ticker", "namedt"]).drop_duplicates(subset=["ticker"], keep="last")
+        for _, row in crsp.iterrows():
+            t = str(row.get("ticker", "")).upper()
+            if not t:
+                continue
+            crsp_map[t] = _sic_to_sector_label(row.get("siccd"))
+
+    out_map = {}
+    for t in norm:
+        lab = comp_map.get(t, "Unknown")
+        if lab == "Unknown":
+            lab = crsp_map.get(t, "Unknown")
+        out_map[t] = lab
+
+    out = pd.Series(out_map, name="sector")
+    out.index.name = "ticker"
+    return out
+
+
 # Patch WRDS once at import when SQLAlchemy 2+ is present so direct
 # ``wrds.Connection()`` (not only ``get_connection()``) gets execute fixes.
 try:
