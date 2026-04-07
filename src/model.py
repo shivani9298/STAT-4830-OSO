@@ -1,6 +1,10 @@
 """
 Portfolio weight models: MLP, GRU/LSTM, Transformer, Hybrid.
 
+Transformer encoder classes live in :mod:`src.TRANSFORMER_model` and are re-exported
+here for ``from src.model import TransformerAllocator`` compatibility.
+Attention export utilities: :mod:`src.TRANSFORMER_attention_export`.
+
 Input: (batch, T, F) — window of past returns/features.
 Output: (batch, n_assets) — weights on simplex (non-negative, sum 1).
 All models share the same interface: forward(x) -> weights.
@@ -12,7 +16,16 @@ import torch
 import torch.nn as nn
 from typing import Literal, Union
 
-ModuleType = Union["AllocatorNet", "MLPAllocator", "TransformerAllocator", "HybridAllocator"]
+from .TRANSFORMER_model import SectorMultiHeadTransformerAllocator, TransformerAllocator
+
+ModuleType = Union[
+    "AllocatorNet",
+    "MLPAllocator",
+    "TransformerAllocator",
+    "HybridAllocator",
+    "SectorMultiHeadAllocator",
+    "SectorMultiHeadTransformerAllocator",
+]
 
 
 class AllocatorNet(nn.Module):
@@ -109,61 +122,6 @@ class MLPAllocator(nn.Module):
         return torch.softmax(logits, dim=-1)
 
 
-class TransformerAllocator(nn.Module):
-    """
-    Positional encoding + transformer encoder → pool (last token) → MLP → softmax → weights.
-    """
-
-    def __init__(
-        self,
-        input_size: int,
-        n_assets: int = 2,
-        d_model: int = 64,
-        nhead: int = 4,
-        num_layers: int = 2,
-        dim_feedforward: int = 128,
-        dropout: float = 0.1,
-    ):
-        super().__init__()
-        self.n_assets = n_assets
-        self.d_model = d_model
-        self.proj = nn.Linear(input_size, d_model)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout,
-            batch_first=True,
-            norm_first=False,
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.mlp = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_model, n_assets),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, T, F = x.shape
-        x = self.proj(x)
-        pe = self._positional_encoding(T, x.device)
-        x = x + pe
-        x = self.transformer(x)
-        last = x[:, -1, :]
-        logits = self.mlp(last)
-        return torch.softmax(logits, dim=-1)
-
-    def _positional_encoding(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        pe = torch.zeros(1, seq_len, self.d_model, device=device, dtype=torch.float32)
-        for i in range(seq_len):
-            for j in range(0, self.d_model, 2):
-                pe[0, i, j] = math.sin(i / 10000 ** (j / self.d_model))
-                if j + 1 < self.d_model:
-                    pe[0, i, j + 1] = math.cos(i / 10000 ** (j / self.d_model))
-        return pe
-
-
 class HybridAllocator(nn.Module):
     """
     Stage 1: GRU/Transformer → state vector. Stage 2: MLP(state) → softmax → weights.
@@ -231,6 +189,66 @@ class HybridAllocator(nn.Module):
         return torch.softmax(logits, dim=-1)
 
 
+class SectorMultiHeadAllocator(nn.Module):
+    """
+    Shared GRU encoder; one MLP head per IPO sector group.
+    Each head outputs a 2-way softmax (market vs that sector's IPO basket).
+
+    Forward: (B, T, F) -> (B, G, 2).
+    """
+
+    def __init__(
+        self,
+        input_size: int,
+        n_sectors: int,
+        hidden_size: int = 64,
+        num_layers: int = 1,
+        rnn_type: Literal["gru", "lstm"] = "gru",
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.n_sectors = n_sectors
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        if rnn_type == "gru":
+            self.rnn = nn.GRU(
+                input_size,
+                hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0,
+            )
+        else:
+            self.rnn = nn.LSTM(
+                input_size,
+                hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=dropout if num_layers > 1 else 0,
+            )
+        self.rnn_type = rnn_type
+        self.heads = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(hidden_size, hidden_size),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(hidden_size, 2),
+                )
+                for _ in range(n_sectors)
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out, _ = self.rnn(x)
+        h = out[:, -1, :]
+        w_list = []
+        for head in self.heads:
+            logits = head(h)
+            w_list.append(torch.softmax(logits, dim=-1))
+        return torch.stack(w_list, dim=1)
+
+
 def build_model(
     n_features: int,
     n_assets: int = 2,
@@ -272,6 +290,39 @@ def build_model(
     return AllocatorNet(
         input_size=n_features,
         n_assets=n_assets,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        rnn_type=rnn,
+        dropout=dropout,
+    )
+
+
+def build_sector_head_model(
+    n_features: int,
+    n_sectors: int,
+    seq_len: int = 252,
+    hidden_size: int = 64,
+    num_layers: int = 1,
+    model_type: str = "gru",
+    dropout: float = 0.1,
+) -> nn.Module:
+    """
+    Multi-head allocator over sectors: ``model_type`` = ``gru`` | ``lstm`` | ``transformer``.
+    """
+    if model_type == "transformer":
+        return SectorMultiHeadTransformerAllocator(
+            input_size=n_features,
+            n_sectors=n_sectors,
+            d_model=hidden_size,
+            nhead=4,
+            num_layers=min(2, num_layers + 1),
+            dim_feedforward=hidden_size * 2,
+            dropout=dropout,
+        )
+    rnn = "lstm" if model_type == "lstm" else "gru"
+    return SectorMultiHeadAllocator(
+        input_size=n_features,
+        n_sectors=n_sectors,
         hidden_size=hidden_size,
         num_layers=num_layers,
         rnn_type=rnn,
