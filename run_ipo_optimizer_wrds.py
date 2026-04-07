@@ -8,12 +8,20 @@ Set ``model_type`` to ``transformer`` in ``best_config``, in gitignored ``local/
 or via env ``IPO_MODEL_TYPE=transformer``. When ``model_type`` is ``transformer``, ``TRANSFORMER_CONFIG``
 (lr, batch_size, lambda_cvar, hidden_size, weight_decay, dropout, cosine_lr) is merged after ``best_config``;
 ``local/ipo_optimizer_config.json`` is applied last so you can override any key.
+Set ``IPO_LOCAL_CONFIG`` to a path (repo-relative or absolute) to use a different JSON file
+for the same merge (e.g. run several transformer variants in sequence).
 Set ``IPO_EXPORT_ATTENTION=1`` to save self-attention maps (``results/ipo_optimizer_attention.npz`` and
 ``figures/ipo_optimizer_attention_layer0.png``) when ``model_type`` is ``transformer``.
 Set ``IPO_SECTOR_PORTFOLIOS=0`` for a single market-vs-IPO index (overrides ``SECTOR_PORTFOLIOS``).
+Set ``IPO_SECTOR_SOURCE`` to ``yfinance`` (Yahoo ``info['sector']``), ``compustat`` (default:
+Compustat GICS via ``comp.funda``/``comp.company`` join on ticker), or ``ccm`` / ``wrds_chain``
+(date-valid chain: ``match_date`` = max(ipo_date, first CRSP price date) → ``stocknames`` /
+``dsenames`` → CCM → Compustat GICS; see ``docs/SECTOR_CCM_WORKFLOW.md`` and
+``src/wrds_ipo_gics_enrichment.py``). Cache files: ``results/ticker_sector_cache_*.csv``.
+Pre-build CCM labels only: ``python scripts/generate_sector_cache_ccm.py`` (defaults
+2010–2024 IPO offer dates).
 
-When SECTOR_PORTFOLIOS is True (default): Yahoo Finance ``info['sector']`` (cached under
-``results/ticker_sector_cache.csv``) groups IPOs (e.g. Healthcare, Technology). A mcap-weighted
+When SECTOR_PORTFOLIOS is True (default): sector labels (GICS or Yahoo) group IPOs into baskets. A mcap-weighted
 IPO basket is built per sector; one shared encoder (GRU/LSTM or Transformer) feeds separate two-way softmax heads (market vs
 that sector basket). Exports ``results/ipo_optimizer_weights_sector_*.csv`` and
 ``results/ipo_optimizer_summary_by_sector.txt``.
@@ -24,6 +32,11 @@ import json
 import os
 import sys
 from pathlib import Path
+
+# Windows: PyTorch + NumPy/MKL each link Intel OpenMP; loading both aborts without this.
+# Must be set before importing numpy or torch.
+if sys.platform == "win32":
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -38,6 +51,9 @@ except ImportError:
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.wrds_data import (
@@ -65,9 +81,12 @@ from src.export import (
     predict_weights,
     portfolio_stats,
 )
+from src.plot_loss import slim_history_for_json
 from src.policy_layer import ipo_tilt_to_position_scale, policy_rule
 from src.sector_ipo import (
     fetch_ticker_sectors,
+    fetch_ticker_sectors_ccm_chain,
+    fetch_ticker_sectors_compustat,
     group_tickers_by_sector,
     sector_column_name,
 )
@@ -133,7 +152,13 @@ def load_best_config():
         cfg["model_type"] = mt
     if cfg.get("model_type") == "transformer":
         cfg.update(TRANSFORMER_CONFIG)
-    local_path = ROOT / "local" / "ipo_optimizer_config.json"
+    local_override = os.environ.get("IPO_LOCAL_CONFIG", "").strip()
+    if local_override:
+        local_path = Path(local_override)
+        if not local_path.is_absolute():
+            local_path = ROOT / local_path
+    else:
+        local_path = ROOT / "local" / "ipo_optimizer_config.json"
     if local_path.exists():
         with open(local_path) as f:
             local = json.load(f)
@@ -313,8 +338,32 @@ def prepare_data(
     n_days = len(prices.index)
 
     if sector_portfolios:
-        cache = ROOT / "results" / "ticker_sector_cache.csv"
-        sec_series = fetch_ticker_sectors(ipo_tickers, cache_path=cache, verbose=True)
+        _src = os.environ.get("IPO_SECTOR_SOURCE", "compustat").strip().lower()
+        if _src in ("yfinance", "yahoo", "yf"):
+            cache = ROOT / "results" / "ticker_sector_cache_yfinance.csv"
+            sec_series = fetch_ticker_sectors(ipo_tickers, cache_path=cache, verbose=True)
+        elif _src in ("ccm", "wrds_chain", "chain", "ccm_gics"):
+            cache = ROOT / "results" / "ticker_sector_cache_ccm.csv"
+            ipo_ccm = ipo_df[["ticker", "ipo_date"]].copy()
+            _fd: dict[str, pd.Timestamp] = {}
+            for _tic in ipo_ccm["ticker"]:
+                if _tic in prices_ipo.columns:
+                    _s = prices_ipo[_tic].dropna()
+                    if len(_s) > 0:
+                        _fd[_tic] = pd.Timestamp(_s.index.min()).normalize()
+            ipo_ccm["first_crsp_date"] = ipo_ccm["ticker"].map(_fd)
+            sec_series = fetch_ticker_sectors_ccm_chain(
+                conn,
+                ipo_ccm,
+                ipo_tickers,
+                cache_path=cache,
+                verbose=True,
+            )
+        else:
+            cache = ROOT / "results" / "ticker_sector_cache_compustat.csv"
+            sec_series = fetch_ticker_sectors_compustat(
+                conn, ipo_tickers, cache_path=cache, verbose=True
+            )
         groups = group_tickers_by_sector(
             ipo_tickers, sec_series, min_names=MIN_TICKERS_PER_SECTOR_GROUP
         )
@@ -489,6 +538,13 @@ def main():
         )
     print(f"Trained for {len(history)} epochs")
 
+    out_dir = ROOT / "results"
+    out_dir.mkdir(exist_ok=True)
+    hist_path = out_dir / "ipo_optimizer_training_history.json"
+    with open(hist_path, "w", encoding="utf-8") as f:
+        json.dump(slim_history_for_json(history), f, indent=2)
+    print(f"Saved training history to {hist_path}")
+
     epochs_x = [h["epoch"] for h in history]
     train_loss = [h["train_loss"] for h in history]
     val_loss = [h["val_loss"] for h in history]
@@ -511,9 +567,6 @@ def main():
     fig.savefig(fig_dir / "ipo_optimizer_loss.png", dpi=150)
     plt.close()
     print(f"Saved loss plot to {fig_dir / 'ipo_optimizer_loss.png'}")
-
-    out_dir = ROOT / "results"
-    out_dir.mkdir(exist_ok=True)
 
     if os.environ.get("IPO_EXPORT_ATTENTION", "").strip().lower() in ("1", "true", "yes"):
         if cfg.get("model_type") == "transformer":

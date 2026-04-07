@@ -215,6 +215,109 @@ except Exception:
     pass
 
 
+# Compustat ``comp.company`` GICS sector code (gsector) → sector name (GICS 2-digit standard).
+# Unknown codes fall back to "GICS_{code}" so groups remain distinct.
+GICS_GSECTOR_TO_NAME: dict[str, str] = {
+    "10": "Energy",
+    "15": "Materials",
+    "20": "Industrials",
+    "25": "Consumer_Discretionary",
+    "30": "Consumer_Staples",
+    "35": "Health_Care",
+    "40": "Financials",
+    "45": "Information_Technology",
+    "50": "Communication_Services",
+    "55": "Utilities",
+    "60": "Real_Estate",
+}
+
+
+def _normalize_gsector_code(raw) -> str | None:
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None
+    s = str(raw).strip()
+    if not s or s.lower() in ("nan", "none"):
+        return None
+    # Compustat often stores 2-digit strings; allow ints
+    try:
+        if "." in s:
+            s = str(int(float(s)))
+        elif s.isdigit():
+            s = str(int(s))
+    except (ValueError, TypeError):
+        pass
+    if len(s) == 1:
+        s = s.zfill(2)
+    return s
+
+
+def gics_sector_name_from_code(code) -> str:
+    """Human-readable sector label for ``gsector``; spaces → underscores for column names."""
+    c = _normalize_gsector_code(code)
+    if c is None:
+        return "Unknown"
+    return GICS_GSECTOR_TO_NAME.get(c, f"GICS_{c}")
+
+
+def load_gics_sectors_for_tickers_wrds(conn, tickers: list[str]) -> pd.DataFrame:
+    """
+    Map CRSP/SDC-style tickers to GICS sector names using Compustat.
+
+    On WRDS PostgreSQL, ``comp.company`` does not expose ``tic``; tickers live on
+    ``comp.funda``. This joins ``comp.funda`` (latest ``datadate`` per ticker) to
+    ``comp.company`` on ``gvkey`` to read ``gsector``. Tickers not found or with null
+    ``gsector`` are omitted from the result (caller should treat missing as Unknown).
+
+    Parameters
+    ----------
+    conn : wrds.Connection
+    tickers : list of ticker strings (matched UPPER/TRIM).
+
+    Returns
+    -------
+    DataFrame columns: ``ticker``, ``gsector``, ``sector`` (display name).
+    """
+    tickers = sorted({str(t).upper().replace(".", "-").strip() for t in tickers if t})
+    if not tickers:
+        return pd.DataFrame(columns=["ticker", "gsector", "sector"])
+
+    # Chunk IN lists for very large universes
+    chunks: list[pd.DataFrame] = []
+    chunk_size = 400
+    for i in range(0, len(tickers), chunk_size):
+        part = tickers[i : i + chunk_size]
+        in_list = ",".join("'" + t.replace("'", "''") + "'" for t in part)
+        sql = f"""
+            WITH latest AS (
+                SELECT gvkey, tic,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY UPPER(TRIM(tic)) ORDER BY datadate DESC
+                    ) AS rn
+                FROM comp.funda
+                WHERE UPPER(TRIM(tic)) IN ({in_list})
+            )
+            SELECT UPPER(TRIM(l.tic)) AS ticker, c.gsector
+            FROM latest l
+            INNER JOIN comp.company c ON c.gvkey = l.gvkey
+            WHERE l.rn = 1
+        """
+        df = conn.raw_sql(sql)
+        if df is not None and len(df) > 0:
+            chunks.append(df)
+
+    if not chunks:
+        return pd.DataFrame(columns=["ticker", "gsector", "sector"])
+
+    out = pd.concat(chunks, ignore_index=True)
+    if "gsector" not in out.columns:
+        return pd.DataFrame(columns=["ticker", "gsector", "sector"])
+    out["ticker"] = out["ticker"].astype(str).str.upper().str.strip()
+    # Prefer rows with non-null gsector when duplicate tickers exist
+    out = out.sort_values("gsector", na_position="last").drop_duplicates(subset=["ticker"], keep="first")
+    out["sector"] = out["gsector"].map(gics_sector_name_from_code)
+    return out[["ticker", "gsector", "sector"]]
+
+
 def load_market_returns_wrds(
     conn,
     start: str = "2010-01-01",
