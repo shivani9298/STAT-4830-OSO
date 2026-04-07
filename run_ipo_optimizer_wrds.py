@@ -34,17 +34,25 @@ from src.wrds_data import (
     load_ticker_sector_info_wrds,
     load_vix_wrds,
 )
-from src.data_layer import align_returns, add_optional_features, build_rolling_windows, train_val_split
-from src.train import run_training
+from src.data_layer import (
+    align_returns,
+    add_optional_features,
+    build_rolling_windows,
+    train_val_test_split,
+)
+from src.train import run_training, rolling_tail_excess_objective
 from src.export import predict_weights, portfolio_stats, export_weights_csv, export_summary
 from src.policy_layer import ipo_tilt_to_position_scale, policy_rule
 
 DEFAULT_START_DATE = os.environ.get("IPO_START_DATE", "2020-01-01")
 DEFAULT_END_DATE = os.environ.get("IPO_END_DATE", "2025-12-31")
+DEFAULT_VAL_START = os.environ.get("IPO_VAL_START")
+DEFAULT_TEST_START = os.environ.get("IPO_TEST_START")
 
 DEFAULTS = {
     "window_len": 126,
     "val_frac": 0.2,
+    "test_frac": 0.1,
     "epochs": 200,
     "lr": 3e-4,
     "lr_decay": 0.1,
@@ -55,6 +63,7 @@ DEFAULTS = {
     "lambda_turnover": 0.0001,
     "lambda_path": 0.0001,
     "lambda_vol_excess": 1.0,
+    "lambda_vs_ew": 0.0,
     "target_vol_annual": 0.25,
     "hidden_size": 64,
     "lambda_diversify": 0.0,
@@ -189,6 +198,40 @@ def parse_args():
         default="gru",
         choices=["gru", "lstm", "transformer"],
         help="Model architecture to train.",
+    )
+    parser.add_argument(
+        "--val-start",
+        default=DEFAULT_VAL_START,
+        help="Validation start date YYYY-MM-DD. If omitted, fraction-based split is used.",
+    )
+    parser.add_argument(
+        "--test-start",
+        default=DEFAULT_TEST_START,
+        help="Test start date YYYY-MM-DD. If set with --val-start, uses calendar train/val/test split.",
+    )
+    parser.add_argument(
+        "--selection-metric",
+        default="rolling_tail_excess",
+        choices=["val_loss", "rolling_tail_excess"],
+        help="Early-stop/checkpoint selection metric.",
+    )
+    parser.add_argument(
+        "--rolling-window",
+        type=int,
+        default=21,
+        help="Window length (days) for rolling excess metric vs 50/50.",
+    )
+    parser.add_argument(
+        "--rolling-tail-quantile",
+        type=float,
+        default=0.10,
+        help="Lower-tail quantile for rolling excess metric (e.g., 0.10 = 10th percentile).",
+    )
+    parser.add_argument(
+        "--selection-drawdown-penalty",
+        type=float,
+        default=0.0,
+        help="Optional drawdown penalty coefficient in rolling-tail selection objective.",
     )
     return parser.parse_args()
 
@@ -371,8 +414,22 @@ def main():
     X, R, dates = build_rolling_windows(
         df, window_len=cfg["window_len"], feature_cols=feature_cols
     )
-    X_train, R_train, d_train, X_val, R_val, d_val = train_val_split(
-        X, R, dates, val_frac=cfg["val_frac"]
+    (
+        X_train,
+        R_train,
+        d_train,
+        X_val,
+        R_val,
+        d_val,
+        X_test,
+        R_test,
+        d_test,
+    ) = train_val_test_split(
+        X, R, dates,
+        val_start=args.val_start,
+        test_start=args.test_start,
+        val_frac=cfg["val_frac"],
+        test_frac=cfg.get("test_frac", 0.10),
     )
 
     data = {
@@ -382,12 +439,21 @@ def main():
         "X_val": X_val,
         "R_val": R_val,
         "dates_val": d_val,
+        "X_test": X_test,
+        "R_test": R_test,
+        "dates_test": d_test,
         "feature_cols": feature_cols,
         "df": df,
         "n_assets": 2,
         "window_len": cfg["window_len"],
     }
-    print(f"Train windows: {X_train.shape[0]}, Val windows: {X_val.shape[0]}")
+    print(f"Train windows: {X_train.shape[0]}, Val windows: {X_val.shape[0]}, Test windows: {X_test.shape[0]}")
+    if len(d_train) > 0:
+        print(f"Train period: {pd.Timestamp(d_train[0]).date()} -> {pd.Timestamp(d_train[-1]).date()}")
+    if len(d_val) > 0:
+        print(f"Val period:   {pd.Timestamp(d_val[0]).date()} -> {pd.Timestamp(d_val[-1]).date()}")
+    if len(d_test) > 0:
+        print(f"Test period:  {pd.Timestamp(d_test[0]).date()} -> {pd.Timestamp(d_test[-1]).date()}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, history = run_training(
@@ -405,9 +471,14 @@ def main():
         lambda_diversify=cfg.get("lambda_diversify", 1.0),
         min_weight=cfg.get("min_weight", 0.1),
         lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
+        lambda_vs_ew=cfg.get("lambda_vs_ew", 0.0),
         target_vol_annual=cfg.get("target_vol_annual", 0.25),
         hidden_size=cfg["hidden_size"],
         model_type=args.model,
+        selection_metric=args.selection_metric,
+        rolling_window=args.rolling_window,
+        rolling_tail_quantile=args.rolling_tail_quantile,
+        selection_drawdown_penalty=args.selection_drawdown_penalty,
     )
     print(f"Trained for {len(history)} epochs")
 
@@ -457,24 +528,117 @@ def main():
     plt.close()
     print(f"Saved loss plot to {fig_dir / f'ipo_optimizer_loss_semilog{result_suffix}.png'}")
 
-    weights = predict_weights(model, data["X_val"], device)
-    stats = portfolio_stats(weights, data["R_val"])
+    # Diagnostics plot to debug flat-loss behavior.
+    hist_df = pd.DataFrame(history)
+    if {"train_diag_grad_l2", "val_diag_ipo_weight_std", "val_diag_shift_from_5050"}.issubset(hist_df.columns):
+        fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+        axes[0].plot(hist_df["epoch"], hist_df["train_diag_grad_l2"], color="#1f77b4")
+        axes[0].set_ylabel("Grad L2")
+        axes[0].set_title("Training Diagnostics")
+        axes[0].grid(True, alpha=0.3)
+
+        axes[1].plot(hist_df["epoch"], hist_df["val_diag_ipo_weight_std"], color="#ff7f0e")
+        axes[1].set_ylabel("Val IPO w std")
+        axes[1].grid(True, alpha=0.3)
+
+        axes[2].plot(hist_df["epoch"], hist_df["val_diag_shift_from_5050"], color="#2ca02c")
+        axes[2].set_ylabel("Val |IPO-0.5|")
+        axes[2].set_xlabel("Epoch")
+        axes[2].grid(True, alpha=0.3)
+
+        fig.tight_layout()
+        diag_path = fig_dir / f"ipo_optimizer_diagnostics{result_suffix}.png"
+        fig.savefig(diag_path, dpi=150)
+        plt.close(fig)
+        print(f"Saved diagnostics plot to {diag_path}")
+
+    weights_val = predict_weights(model, data["X_val"], device)
+    stats_val = portfolio_stats(weights_val, data["R_val"])
+    weights_test = predict_weights(model, data["X_test"], device)
+    stats_test = portfolio_stats(weights_test, data["R_test"])
+
+    val_sel_obj, val_sel_diag = rolling_tail_excess_objective(
+        weights_val,
+        data["R_val"],
+        window=args.rolling_window,
+        tail_quantile=args.rolling_tail_quantile,
+        drawdown_penalty=args.selection_drawdown_penalty,
+    )
+    test_sel_obj, test_sel_diag = rolling_tail_excess_objective(
+        weights_test,
+        data["R_test"],
+        window=args.rolling_window,
+        tail_quantile=args.rolling_tail_quantile,
+        drawdown_penalty=args.selection_drawdown_penalty,
+    )
 
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
-    weights_path = out_dir / f"ipo_optimizer_weights{result_suffix}.csv"
-    summary_path = out_dir / f"ipo_optimizer_summary{result_suffix}.txt"
+    weights_val_path = out_dir / f"ipo_optimizer_weights_val{result_suffix}.csv"
+    weights_test_path = out_dir / f"ipo_optimizer_weights_test{result_suffix}.csv"
+    summary_val_path = out_dir / f"ipo_optimizer_summary_val{result_suffix}.txt"
+    summary_test_path = out_dir / f"ipo_optimizer_summary_test{result_suffix}.txt"
+    comparison_path = out_dir / f"ipo_optimizer_selection_metrics{result_suffix}.json"
+    returns_val_path = out_dir / f"ipo_optimizer_returns_val{result_suffix}.csv"
+    returns_test_path = out_dir / f"ipo_optimizer_returns_test{result_suffix}.csv"
 
-    export_weights_csv(data["dates_val"], weights, weights_path)
-    export_summary(stats, weights, summary_path, R=data["R_val"])
-    print(f"Exported weights to {weights_path}")
-    print(f"Exported summary to {summary_path}")
+    export_weights_csv(data["dates_val"], weights_val, weights_val_path)
+    export_weights_csv(data["dates_test"], weights_test, weights_test_path)
+    export_summary(stats_val, weights_val, summary_val_path, R=data["R_val"])
+    export_summary(stats_test, weights_test, summary_test_path, R=data["R_test"])
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(data["dates_val"]),
+            "market_return": data["R_val"][:, 0],
+            "ipo_return": data["R_val"][:, 1],
+            "equal_weight_return": data["R_val"].mean(axis=1),
+        }
+    ).to_csv(returns_val_path, index=False)
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(data["dates_test"]),
+            "market_return": data["R_test"][:, 0],
+            "ipo_return": data["R_test"][:, 1],
+            "equal_weight_return": data["R_test"].mean(axis=1),
+        }
+    ).to_csv(returns_test_path, index=False)
 
-    avg_ipo = float(weights[:, 1].mean()) if weights.shape[1] >= 2 else 0.0
+    selection_payload = {
+        "model": args.model,
+        "selection_metric": args.selection_metric,
+        "rolling_window": args.rolling_window,
+        "rolling_tail_quantile": args.rolling_tail_quantile,
+        "selection_drawdown_penalty": args.selection_drawdown_penalty,
+        "validation": {"objective": val_sel_obj, **val_sel_diag},
+        "test": {"objective": test_sel_obj, **test_sel_diag},
+    }
+    with open(comparison_path, "w") as f:
+        json.dump(selection_payload, f, indent=2)
+
+    print(f"Exported val weights to {weights_val_path}")
+    print(f"Exported test weights to {weights_test_path}")
+    print(f"Exported val summary to {summary_val_path}")
+    print(f"Exported test summary to {summary_test_path}")
+    print(f"Exported val returns to {returns_val_path}")
+    print(f"Exported test returns to {returns_test_path}")
+    print(f"Exported selection metrics to {comparison_path}")
+
+    avg_ipo = float(weights_test[:, 1].mean()) if weights_test.shape[1] >= 2 else 0.0
     scale = ipo_tilt_to_position_scale(avg_ipo)
     print(policy_rule(avg_ipo))
     print(f"Suggested position scale: {scale:.2f}")
-    print(f"Metrics: Sharpe={stats['sharpe_annualized']:.2f}, MaxDD={stats['max_drawdown']:.2%}")
+    print(
+        "Validation metrics: "
+        f"Sharpe={stats_val['sharpe_annualized']:.2f}, "
+        f"MaxDD={stats_val['max_drawdown']:.2%}, "
+        f"TailQExcess={val_sel_diag['tail_q_excess']:.4f}"
+    )
+    print(
+        "Test metrics: "
+        f"Sharpe={stats_test['sharpe_annualized']:.2f}, "
+        f"MaxDD={stats_test['max_drawdown']:.2%}, "
+        f"TailQExcess={test_sel_diag['tail_q_excess']:.4f}"
+    )
     return 0
 
 

@@ -2,7 +2,7 @@
 Data layer for IPO portfolio optimizer.
 
 Load/construct market returns and IPO index returns, align by date,
-build rolling windows (T, F), and provide train/validation split by time.
+build rolling windows (T, F), and provide time-ordered train/validation/test splits.
 """
 from __future__ import annotations
 
@@ -224,6 +224,75 @@ def train_val_split(
     return X_train, R_train, d_train, X_val, R_val, d_val
 
 
+def train_val_test_split(
+    X: np.ndarray,
+    R: np.ndarray,
+    dates: np.ndarray,
+    val_start: Optional[str] = None,
+    test_start: Optional[str] = None,
+    val_frac: float = 0.2,
+    test_frac: float = 0.1,
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray,
+    np.ndarray, np.ndarray, np.ndarray,
+    np.ndarray, np.ndarray, np.ndarray,
+]:
+    """
+    Split into train / validation / test by time.
+
+    Preferred mode is calendar cutoffs:
+        train: date < val_start
+        val:   val_start <= date < test_start
+        test:  date >= test_start
+
+    If cutoffs are not provided, falls back to fraction-based tail split.
+    """
+    n = len(dates)
+    if n == 0:
+        empty_x = X[:0]
+        empty_r = R[:0]
+        empty_d = dates[:0]
+        return empty_x, empty_r, empty_d, empty_x, empty_r, empty_d, empty_x, empty_r, empty_d
+
+    ts_dates = pd.to_datetime(dates)
+    if val_start is not None and test_start is not None:
+        val_ts = pd.Timestamp(val_start)
+        test_ts = pd.Timestamp(test_start)
+        if test_ts <= val_ts:
+            raise ValueError(f"test_start ({test_ts.date()}) must be after val_start ({val_ts.date()})")
+        train_mask = ts_dates < val_ts
+        val_mask = (ts_dates >= val_ts) & (ts_dates < test_ts)
+        test_mask = ts_dates >= test_ts
+    else:
+        n_test = max(1, int(n * test_frac))
+        n_val = max(1, int(n * val_frac))
+        if n_val + n_test >= n:
+            # Keep at least one training sample.
+            n_val = max(1, min(n_val, n - 2))
+            n_test = 1
+        train_end = n - (n_val + n_test)
+        val_end = n - n_test
+        train_mask = np.zeros(n, dtype=bool)
+        val_mask = np.zeros(n, dtype=bool)
+        test_mask = np.zeros(n, dtype=bool)
+        train_mask[:train_end] = True
+        val_mask[train_end:val_end] = True
+        test_mask[val_end:] = True
+
+    if not np.any(train_mask):
+        raise ValueError("No train samples after split; adjust val_start/test_start or fractions.")
+    if not np.any(val_mask):
+        raise ValueError("No validation samples after split; adjust val_start/test_start or fractions.")
+    if not np.any(test_mask):
+        raise ValueError("No test samples after split; adjust val_start/test_start or fractions.")
+
+    return (
+        X[train_mask], R[train_mask], dates[train_mask],
+        X[val_mask], R[val_mask], dates[val_mask],
+        X[test_mask], R[test_mask], dates[test_mask],
+    )
+
+
 def get_data(
     start: str = "2010-01-01",
     end: Optional[str] = None,
@@ -231,9 +300,12 @@ def get_data(
     ipo_list: Optional[list[tuple[str, str]]] = None,
     window_len: int = 252,
     val_frac: float = 0.15,
+    test_frac: float = 0.10,
     include_optional_features: bool = True,
     market_source: str = "yfinance",
     wrds_conn=None,
+    val_start: Optional[str] = None,
+    test_start: Optional[str] = None,
 ) -> dict:
     """
     Full pipeline: load market + IPO returns, align, add features, build windows, split.
@@ -259,7 +331,17 @@ def get_data(
         df = add_optional_features(df, include_vix=False)
     feature_cols = list(df.columns)
     X, R, dates = build_rolling_windows(df, window_len=window_len, feature_cols=feature_cols)
-    X_train, R_train, d_train, X_val, R_val, d_val = train_val_split(X, R, dates, val_frac=val_frac)
+    (
+        X_train, R_train, d_train,
+        X_val, R_val, d_val,
+        X_test, R_test, d_test,
+    ) = train_val_test_split(
+        X, R, dates,
+        val_start=val_start,
+        test_start=test_start,
+        val_frac=val_frac,
+        test_frac=test_frac,
+    )
     return {
         "X_train": X_train,
         "R_train": R_train,
@@ -267,6 +349,9 @@ def get_data(
         "X_val": X_val,
         "R_val": R_val,
         "dates_val": d_val,
+        "X_test": X_test,
+        "R_test": R_test,
+        "dates_test": d_test,
         "feature_cols": feature_cols,
         "df": df,
         "n_assets": 2,
