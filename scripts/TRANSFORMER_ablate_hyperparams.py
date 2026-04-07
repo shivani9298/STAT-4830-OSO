@@ -6,7 +6,7 @@ Uses fixed synthetic rolling-window data (same shapes as real sector runs) so re
 are reproducible without WRDS. Best validation composite loss is the metric; use WRDS
 re-runs to confirm on real data.
 
-Run from repo root: python scripts/ablate_transformer_hyperparams.py
+Run from repo root: python scripts/TRANSFORMER_ablate_hyperparams.py
 """
 from __future__ import annotations
 

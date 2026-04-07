@@ -7,18 +7,21 @@ windows have **non-overlapping calendar input spans** at split boundaries (same 
 as ``tune_hyperparameters_wrds.py``).
 
 Train optimizes on train; early stopping uses validation; **test** loss is reported
-after each run with the best validation checkpoint.
+after each run with the best validation checkpoint. Each run also records **test**
+**portfolio return metrics** (Sharpe, annualized return, total return, max drawdown,
+avg turnover) via ``portfolio_stats``: per sector + ``mean_across_sectors`` when
+``sector_portfolios`` is true, else a single ``portfolio`` block for market vs IPO.
 
 Usage (from repo root, Anaconda Python recommended):
 
   set IPO_MODEL_TYPE=transformer
-  python scripts/wrds_transformer_ablation_short_horizon.py
+  python scripts/TRANSFORMER_wrds_ablation_short_horizon.py
 
   # Single market vs IPO (faster, no sector baskets):
-  python scripts/wrds_transformer_ablation_short_horizon.py --no-sector
+  python scripts/TRANSFORMER_wrds_ablation_short_horizon.py --no-sector
 
   # Custom boundaries (must satisfy val_start < test_start):
-  python scripts/wrds_transformer_ablation_short_horizon.py \\
+  python scripts/TRANSFORMER_wrds_ablation_short_horizon.py \\
     --start 2020-01-01 --end 2024-12-31 \\
     --val-start 2023-01-01 --test-start 2024-01-01
 """
@@ -40,6 +43,7 @@ try:
 except ImportError:
     pass
 
+import numpy as np
 import torch
 
 from run_ipo_optimizer_wrds import (
@@ -54,7 +58,58 @@ from src.data_layer import (
     build_rolling_windows_sector_heads,
     train_val_test_split,
 )
+from src.export import portfolio_stats, predict_sector_head_weights, predict_weights
 from src.train import run_training, run_training_sector_heads, validate, validate_sector_heads
+
+
+def _stats_to_json(st: dict) -> dict:
+    return {k: float(v) for k, v in st.items()}
+
+
+def compute_test_return_metrics(
+    model: torch.nn.Module,
+    X_test: np.ndarray,
+    R_test: np.ndarray,
+    device: torch.device,
+    *,
+    use_sectors: bool,
+    sector_labels: list[str],
+    infer_batch: int,
+) -> dict:
+    """
+    Out-of-sample portfolio metrics on the **test** split (same convention as
+    ``run_ipo_optimizer_wrds`` sector loop: one ``portfolio_stats`` per sector head).
+    """
+    if use_sectors:
+        weights = predict_sector_head_weights(
+            model, X_test, device, batch_size=min(infer_batch, 256)
+        )
+        n_g = weights.shape[1]
+        per_sector: list[dict] = []
+        sharpes: list[float] = []
+        ann_rets: list[float] = []
+        totals: list[float] = []
+        max_dds: list[float] = []
+        for idx in range(n_g):
+            label = sector_labels[idx] if idx < len(sector_labels) else str(idx)
+            st = portfolio_stats(weights[:, idx, :], R_test[:, idx, :])
+            per_sector.append({"sector": label, **_stats_to_json(st)})
+            sharpes.append(float(st["sharpe_annualized"]))
+            ann_rets.append(float(st["return_annualized"]))
+            totals.append(float(st["total_return"]))
+            max_dds.append(float(st["max_drawdown"]))
+        return {
+            "per_sector": per_sector,
+            "mean_across_sectors": {
+                "sharpe_annualized": float(np.mean(sharpes)),
+                "return_annualized": float(np.mean(ann_rets)),
+                "total_return": float(np.mean(totals)),
+                "max_drawdown": float(np.mean(max_dds)),
+            },
+        }
+    weights = predict_weights(model, X_test, device, batch_size=min(infer_batch, 256))
+    st = portfolio_stats(weights, R_test)
+    return {"portfolio": _stats_to_json(st)}
 
 
 def _base_training_cfg() -> dict:
@@ -300,19 +355,35 @@ def main() -> int:
                 target_vol_annual=cfg.get("target_vol_annual", 0.25),
             )
 
-        best_val = min(h["val_loss"] for h in history)
-        results.append(
-            {
-                "name": name,
-                "best_val_loss": float(best_val),
-                "test_loss": float(test_loss),
-                "epochs_ran": len(history),
-                "overrides": overrides or None,
-                "history": _compact_history(history),
-            }
+        test_metrics = compute_test_return_metrics(
+            model,
+            X_test,
+            R_test,
+            device,
+            use_sectors=use_sectors,
+            sector_labels=sector_labels,
+            infer_batch=min(cfg["batch_size"], 256),
         )
+
+        best_val = min(h["val_loss"] for h in history)
+        row = {
+            "name": name,
+            "best_val_loss": float(best_val),
+            "test_loss": float(test_loss),
+            "epochs_ran": len(history),
+            "overrides": overrides or None,
+            "history": _compact_history(history),
+            "test_metrics": test_metrics,
+        }
+        results.append(row)
+        if use_sectors:
+            m = test_metrics["mean_across_sectors"]
+            extra = f"  mean_Sharpe={m['sharpe_annualized']:.2f}  mean_annRet={m['return_annualized']:.2%}"
+        else:
+            m = test_metrics["portfolio"]
+            extra = f"  Sharpe={m['sharpe_annualized']:.2f}  annRet={m['return_annualized']:.2%}"
         print(
-            f"  {name:24s}  best_val={best_val:.6f}  test={test_loss:.6f}  epochs={len(history)}",
+            f"  {name:24s}  best_val={best_val:.6f}  test_loss={test_loss:.6f}  epochs={len(history)}{extra}",
             flush=True,
         )
 

@@ -570,7 +570,7 @@ def main():
 
     if os.environ.get("IPO_EXPORT_ATTENTION", "").strip().lower() in ("1", "true", "yes"):
         if cfg.get("model_type") == "transformer":
-            from src.attention_export import save_attention_heatmap_png, save_attention_npz
+            from src.TRANSFORMER_attention_export import save_attention_heatmap_png, save_attention_npz
             from src.model import SectorMultiHeadTransformerAllocator, TransformerAllocator
 
             if isinstance(model, (TransformerAllocator, SectorMultiHeadTransformerAllocator)):

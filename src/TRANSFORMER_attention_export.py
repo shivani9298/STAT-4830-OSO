@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from .model import SectorMultiHeadTransformerAllocator, TransformerAllocator
+from .TRANSFORMER_model import SectorMultiHeadTransformerAllocator, TransformerAllocator
 
 
 def attention_maps_to_numpy(maps: list[torch.Tensor]) -> dict[str, np.ndarray]:

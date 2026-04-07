@@ -3,13 +3,13 @@
 Plot train vs validation loss (per epoch) for each run in a WRDS ablation JSON.
 
 Requires ``history`` on each run (epoch, train_loss, val_loss). Re-run
-``wrds_transformer_ablation_short_horizon.py`` with an updated script if your
+``TRANSFORMER_wrds_ablation_short_horizon.py`` with an updated script if your
 JSON only has best_val_loss / test_loss.
 
 Usage:
-  python scripts/plot_wrds_ablation_losses.py
-  python scripts/plot_wrds_ablation_losses.py --json results/wrds_transformer_ablation_2020_2024.json
-  python scripts/plot_wrds_ablation_losses.py --out-dir figures/wrds_ablation_loss
+  python scripts/TRANSFORMER_plot_wrds_ablation_losses.py
+  python scripts/TRANSFORMER_plot_wrds_ablation_losses.py --json results/wrds_transformer_ablation_2020_2024.json
+  python scripts/TRANSFORMER_plot_wrds_ablation_losses.py --out-dir figures/wrds_ablation_loss
 """
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ def main() -> int:
     if missing:
         print(
             "These runs have no per-epoch history (re-run ablation with an updated "
-            f"wrds_transformer_ablation_short_horizon.py): {', '.join(missing)}",
+            f"TRANSFORMER_wrds_ablation_short_horizon.py): {', '.join(missing)}",
             file=sys.stderr,
         )
         return 1
