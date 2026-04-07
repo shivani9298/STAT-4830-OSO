@@ -31,6 +31,7 @@ from src.wrds_data import (
     load_sdc_ipo_dates_wrds,
     load_sp500_dow_market_returns_wrds,
     load_stock_returns_wrds,
+    load_ticker_sector_info_wrds,
     load_vix_wrds,
 )
 from src.data_layer import align_returns, add_optional_features, build_rolling_windows, train_val_split
@@ -90,8 +91,16 @@ def load_best_config(model_type: str = "gru"):
     return cfg
 
 
-def build_ipo_index_mcap(prices_df, ipo_dates_df, shares_dict, holding_days=180, min_names=1):
+def build_ipo_index_mcap(
+    prices_df,
+    ipo_dates_df,
+    shares_dict,
+    sector_id_map=None,
+    holding_days=180,
+    min_names=1,
+):
     ipo_lookup = dict(zip(ipo_dates_df["ticker"], ipo_dates_df["ipo_date"]))
+    sector_id_map = sector_id_map or {}
     returns_df = prices_df.pct_change()
     trading_days = {
         t: prices_df[t].dropna().index.tolist()
@@ -121,6 +130,7 @@ def build_ipo_index_mcap(prices_df, ipo_dates_df, shares_dict, holding_days=180,
         total_mcap = sum(market_caps.values())
         if len(market_caps) >= min_names and total_mcap > 0:
             wr, vc = 0.0, 0
+            sector_weighted_sum, sector_weighted_den = 0.0, 0.0
             for t, mcap in market_caps.items():
                 try:
                     r = returns_df.loc[date, t]
@@ -129,10 +139,31 @@ def build_ipo_index_mcap(prices_df, ipo_dates_df, shares_dict, holding_days=180,
                         vc += 1
                 except Exception:
                     pass
+                sid = sector_id_map.get(t)
+                if sid is not None and pd.notna(sid):
+                    sector_weighted_sum += float(sid) * float(mcap)
+                    sector_weighted_den += float(mcap)
             ipo_ret = wr if vc >= min_names else np.nan
+            sector_id_wavg = (
+                sector_weighted_sum / sector_weighted_den
+                if sector_weighted_den > 0
+                else np.nan
+            )
+            sector_count = len(
+                {sector_id_map.get(t) for t in market_caps.keys() if pd.notna(sector_id_map.get(t))}
+            )
         else:
             ipo_ret = np.nan
-        index_data.append({"date": date, "ipo_ret": ipo_ret})
+            sector_id_wavg = np.nan
+            sector_count = 0
+        index_data.append(
+            {
+                "date": date,
+                "ipo_ret": ipo_ret,
+                "ipo_sector_id_wavg": sector_id_wavg,
+                "ipo_sector_count": sector_count,
+            }
+        )
     return pd.DataFrame(index_data).set_index("date")
 
 
@@ -277,13 +308,41 @@ def prepare_data(conn, start_date: str, end_date: str, max_history: bool = False
     prices = prices_ipo.copy().ffill().bfill()
     print(f"Market return days: {len(market_ret)}, Tickers with shares: {len(shares_outstanding)}")
 
+    # Pull sector metadata from WRDS (no yfinance) and build a ticker->sector_id map.
+    sector_info = load_ticker_sector_info_wrds(conn, ipo_tickers)
+    sector_id_map = (
+        dict(zip(sector_info["ticker"], sector_info["sector_id"]))
+        if len(sector_info) > 0
+        else {}
+    )
+    print(
+        f"WRDS sector mapping: {len(sector_id_map)} / {len(ipo_tickers)} tickers have sector_id"
+    )
+
+    # Persist mapping for auditability and reuse.
+    out_dir = ROOT / "results"
+    out_dir.mkdir(exist_ok=True)
+    if len(sector_info) > 0:
+        sector_info.to_csv(out_dir / "ticker_sector_cache.csv", index=False)
+
     # Build IPO index
-    ipo_index = build_ipo_index_mcap(prices, ipo_df, shares_outstanding, holding_days=180)
+    ipo_index = build_ipo_index_mcap(
+        prices,
+        ipo_df,
+        shares_outstanding,
+        sector_id_map=sector_id_map,
+        holding_days=180,
+    )
     print(f"IPO index: {ipo_index['ipo_ret'].notna().sum()} days with valid returns")
 
     # Train
     ipo_ret = ipo_index["ipo_ret"].rename("ipo_return")
     df = align_returns(market_ret, ipo_ret)
+    # Add WRDS-based sector features so GRU/LSTM/Transformer share the same sector signal.
+    df["ipo_sector_id_wavg"] = ipo_index["ipo_sector_id_wavg"].reindex(df.index).ffill().bfill()
+    df["ipo_sector_count"] = (
+        ipo_index["ipo_sector_count"].reindex(df.index).fillna(0).astype(float)
+    )
     vix_series = load_vix_wrds(conn, start=start_d, end=market_end)
     print(f"VIX data from CBOE: {len(vix_series)} days")
     df = add_optional_features(df, vix_series=vix_series)

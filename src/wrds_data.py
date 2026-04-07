@@ -485,7 +485,6 @@ def load_sdc_new_deals_wrds(
                 SELECT *
                 FROM {library}.{tbl}
                 WHERE {date_column} >= '{start}' {end_clause} {not_null_clause} {ipo_clause}
-                LIMIT 50000
             """
             df = conn.raw_sql(sql)
             if df.empty:
@@ -789,3 +788,118 @@ def load_ipo_data_from_sdc_wrds(
         return pd.DataFrame(columns=["tic", "datadate", "prccd", "prcod", "gvkey"])
     prices["datadate"] = pd.to_datetime(prices["datadate"]).dt.normalize()
     return prices[["tic", "datadate", "prccd", "prcod", "gvkey"]].copy()
+
+
+def load_ticker_sector_info_wrds(
+    conn,
+    tickers: list[str],
+) -> pd.DataFrame:
+    """
+    Load ticker -> sector metadata from WRDS (Compustat) for a list of tickers.
+
+    Returns one row per ticker with:
+      - ticker
+      - sector_id (Compustat gsector when available; else derived from SIC / 100)
+      - sector_name (best-effort descriptive label)
+      - sic
+
+    Notes:
+      - Uses Compustat security/company linkage to avoid external sources (no yfinance).
+      - If Compustat fields are sparse for a ticker, sector_id may be NaN.
+    """
+    if not tickers:
+        return pd.DataFrame(columns=["ticker", "sector_id", "sector_name", "sic"])
+
+    ticker_list = ",".join(f"'{t}'" for t in sorted(set(tickers)))
+
+    # Preferred path: comp.security + comp.company with GICS sector.
+    sql_candidates = [
+        f"""
+        SELECT
+            UPPER(TRIM(s.tic)) AS ticker,
+            s.gvkey,
+            c.gsector,
+            c.sic
+        FROM comp.security s
+        LEFT JOIN comp.company c
+          ON c.gvkey = s.gvkey
+        WHERE UPPER(TRIM(s.tic)) IN ({ticker_list})
+        """,
+        # Fallback path if security is unavailable in subscription.
+        f"""
+        SELECT
+            UPPER(TRIM(f.tic)) AS ticker,
+            f.gvkey,
+            c.gsector,
+            c.sic
+        FROM (
+            SELECT tic, gvkey, datadate,
+                   ROW_NUMBER() OVER (PARTITION BY UPPER(TRIM(tic)) ORDER BY datadate DESC) AS rn
+            FROM comp.funda
+            WHERE UPPER(TRIM(tic)) IN ({ticker_list})
+              AND indfmt = 'INDL' AND datafmt = 'STD'
+        ) f
+        LEFT JOIN comp.company c
+          ON c.gvkey = f.gvkey
+        WHERE f.rn = 1
+        """,
+    ]
+
+    last_err = None
+    raw = None
+    for sql in sql_candidates:
+        try:
+            raw = conn.raw_sql(sql)
+            if raw is not None and len(raw) > 0:
+                break
+        except Exception as e:
+            last_err = e
+            continue
+
+    if raw is None or len(raw) == 0:
+        if last_err is not None:
+            # Return empty mapping instead of failing training pipeline.
+            return pd.DataFrame(columns=["ticker", "sector_id", "sector_name", "sic"])
+        return pd.DataFrame(columns=["ticker", "sector_id", "sector_name", "sic"])
+
+    raw["ticker"] = raw["ticker"].astype(str).str.strip().str.upper()
+    raw = raw[raw["ticker"].isin([t.upper() for t in tickers])].copy()
+    if raw.empty:
+        return pd.DataFrame(columns=["ticker", "sector_id", "sector_name", "sic"])
+
+    raw["gsector"] = pd.to_numeric(raw.get("gsector"), errors="coerce")
+    raw["sic"] = pd.to_numeric(raw.get("sic"), errors="coerce")
+
+    # Use gsector when present; otherwise coarse SIC bucket.
+    raw["sector_id"] = raw["gsector"]
+    missing = raw["sector_id"].isna() & raw["sic"].notna()
+    raw.loc[missing, "sector_id"] = (raw.loc[missing, "sic"] // 100).astype(float)
+
+    # Best-effort human-readable names.
+    gics_names = {
+        10: "Energy",
+        15: "Materials",
+        20: "Industrials",
+        25: "Consumer Discretionary",
+        30: "Consumer Staples",
+        35: "Health Care",
+        40: "Financials",
+        45: "Information Technology",
+        50: "Communication Services",
+        55: "Utilities",
+        60: "Real Estate",
+    }
+    raw["sector_name"] = raw["gsector"].map(gics_names)
+    raw["sector_name"] = raw["sector_name"].fillna(
+        raw["sic"].apply(lambda x: f"SIC_{int(x // 100)}" if pd.notna(x) else "Unknown")
+    )
+
+    # Keep one best row per ticker: prefer non-null sector_id.
+    raw["_rank"] = raw["sector_id"].notna().astype(int)
+    out = (
+        raw.sort_values(["ticker", "_rank"], ascending=[True, False])
+        .drop_duplicates(subset=["ticker"], keep="first")
+        [["ticker", "sector_id", "sector_name", "sic"]]
+        .reset_index(drop=True)
+    )
+    return out
