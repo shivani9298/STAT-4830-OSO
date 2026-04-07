@@ -7,7 +7,9 @@ Uses best config from results/ipo_optimizer_best_config.json if present (from tu
 """
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -36,8 +38,8 @@ from src.train import run_training
 from src.export import predict_weights, portfolio_stats, export_weights_csv, export_summary
 from src.policy_layer import ipo_tilt_to_position_scale, policy_rule
 
-START_DATE = "2020-01-01"
-END_DATE = "2025-12-31"
+DEFAULT_START_DATE = os.environ.get("IPO_START_DATE", "2020-01-01")
+DEFAULT_END_DATE = os.environ.get("IPO_END_DATE", "2025-12-31")
 
 DEFAULTS = {
     "window_len": 126,
@@ -59,7 +61,7 @@ DEFAULTS = {
 }
 
 
-def load_best_config():
+def load_best_config(model_type: str = "gru"):
     """Load best config from tuning; fall back to DEFAULTS if not found.
 
     Training mechanics (lr, lr_decay, batch_size, epochs, patience) are always
@@ -68,8 +70,13 @@ def load_best_config():
     are carried over from the saved tuning result.
     """
     TRAINING_KEYS = {"lr", "lr_decay", "batch_size", "epochs", "patience"}
-    path = ROOT / "results" / "ipo_optimizer_best_config.json"
-    if not path.exists():
+    candidates = []
+    if model_type and model_type != "gru":
+        candidates.append(ROOT / "results" / f"ipo_optimizer_best_config_{model_type}.json")
+    candidates.append(ROOT / "results" / "ipo_optimizer_best_config.json")
+
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
         return DEFAULTS.copy()
     with open(path) as f:
         out = json.load(f)
@@ -129,11 +136,72 @@ def build_ipo_index_mcap(prices_df, ipo_dates_df, shares_dict, holding_days=180,
     return pd.DataFrame(index_data).set_index("date")
 
 
-def prepare_data(conn):
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run IPO optimizer with WRDS data.")
+    parser.add_argument(
+        "--start-date",
+        default=DEFAULT_START_DATE,
+        help=f"Start date YYYY-MM-DD (default: env IPO_START_DATE or {DEFAULT_START_DATE})",
+    )
+    parser.add_argument(
+        "--end-date",
+        default=DEFAULT_END_DATE,
+        help=f"End date YYYY-MM-DD (default: env IPO_END_DATE or {DEFAULT_END_DATE})",
+    )
+    parser.add_argument(
+        "--max-history",
+        action="store_true",
+        help="Auto-start at the earliest available IPO date in WRDS SDC tables.",
+    )
+    parser.add_argument(
+        "--model",
+        default="gru",
+        choices=["gru", "lstm", "transformer"],
+        help="Model architecture to train.",
+    )
+    return parser.parse_args()
+
+
+def find_earliest_ipo_date(conn, end_date: str | None = None, library: str = "sdc", date_column: str = "ipodate"):
+    tables_to_try = ["wrds_ni_details", "globalnewiss", "new_issues", "sdc_new_issues", "newiss"]
+    end_clause = f"AND {date_column} <= '{end_date}'" if end_date else ""
+    best_date = None
+    for tbl in tables_to_try:
+        try:
+            sql = f"""
+                SELECT MIN({date_column}) AS min_date
+                FROM {library}.{tbl}
+                WHERE {date_column} IS NOT NULL
+                  AND ipo = 'Yes'
+                  {end_clause}
+            """
+            out = conn.raw_sql(sql)
+            if out.empty or "min_date" not in out.columns:
+                continue
+            value = out["min_date"].iloc[0]
+            if pd.isna(value):
+                continue
+            cand = pd.to_datetime(value).strftime("%Y-%m-%d")
+            if best_date is None or cand < best_date:
+                best_date = cand
+        except Exception:
+            continue
+    return best_date
+
+
+def prepare_data(conn, start_date: str, end_date: str, max_history: bool = False):
     """Load and prepare IPO + market data. Returns dict with df, feature_cols for rolling windows."""
+    if max_history:
+        earliest = find_earliest_ipo_date(conn, end_date=end_date, library="sdc", date_column="ipodate")
+        if earliest:
+            print(f"Max-history enabled: using earliest available IPO date {earliest}")
+            start_date = earliest
+        else:
+            print(f"Max-history enabled but earliest date lookup failed; using start-date {start_date}")
+
     # IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices
     ipo_csv = load_ipo_data_from_sdc_wrds(
-        conn, start=START_DATE, end=END_DATE, library="sdc", price_source="crsp"
+        conn, start=start_date, end=end_date, library="sdc", price_source="crsp"
     )
     print(f"IPO data from SDC + CRSP: {len(ipo_csv)} rows, {ipo_csv['tic'].nunique()} tickers")
 
@@ -145,7 +213,7 @@ def prepare_data(conn):
 
     # IPO dates from SDC (not first trading date); filter to tickers with prices
     ipo_dates = load_sdc_ipo_dates_wrds(
-        conn, start=START_DATE, end=END_DATE, library="sdc"
+        conn, start=start_date, end=end_date, library="sdc"
     )
     ipo_df = ipo_dates[ipo_dates["ticker"].isin(prices_ipo.columns)].copy()
     ipo_df = ipo_df.sort_values("ipo_date").reset_index(drop=True)
@@ -155,8 +223,8 @@ def prepare_data(conn):
     print(f"IPO tickers: {len(ipo_df)}, Date range: {start_d} to {end_d}")
 
     # Market returns: market-cap weighted S&P 500 (82%) + Dow Jones (18%) from CRSP
-    # Use full date range through END_DATE to extend to end of 2025
-    market_end = max(end_d, END_DATE) if end_d else END_DATE
+    # Use full requested end date to avoid truncating after IPO data ends.
+    market_end = max(end_d, end_date) if end_d else end_date
     market_ret = load_sp500_dow_market_returns_wrds(
         conn, start=start_d, end=market_end, w_sp500=0.82, w_dow=0.18
     )
@@ -186,7 +254,7 @@ def prepare_data(conn):
             select gvkey, datadate, csho
             from comp.funda
             where gvkey in ('{gvkey_list}')
-                and datadate >= '2020-01-01'
+                and datadate >= '{start_d}'
                 and csho > 0
                 and indfmt = 'INDL' and datafmt = 'STD'
             """,
@@ -224,16 +292,22 @@ def prepare_data(conn):
 
 
 def main():
+    args = parse_args()
     print("Connecting to WRDS...")
     conn = get_connection()
     print("Connected.")
 
-    data_prep = prepare_data(conn)
+    data_prep = prepare_data(
+        conn,
+        start_date=args.start_date,
+        end_date=args.end_date,
+        max_history=args.max_history,
+    )
     df = data_prep["df"]
     feature_cols = data_prep["feature_cols"]
 
-    cfg = load_best_config()
-    print(f"Hyperparameters: {cfg}")
+    cfg = load_best_config(model_type=args.model)
+    print(f"Hyperparameters ({args.model}): {cfg}")
 
     X, R, dates = build_rolling_windows(
         df, window_len=cfg["window_len"], feature_cols=feature_cols
@@ -274,14 +348,15 @@ def main():
         lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
         target_vol_annual=cfg.get("target_vol_annual", 0.25),
         hidden_size=cfg["hidden_size"],
-        model_type="gru",
+        model_type=args.model,
     )
     print(f"Trained for {len(history)} epochs")
 
     # Save loss history for auditing
     fig_dir = ROOT / "figures"
     fig_dir.mkdir(exist_ok=True)
-    pd.DataFrame(history).to_csv(ROOT / "results" / "training_history.csv", index=False)
+    result_suffix = "" if args.model == "gru" else f"_{args.model}"
+    pd.DataFrame(history).to_csv(ROOT / "results" / f"training_history{result_suffix}.csv", index=False)
 
     # Plot train/val loss — semilog with smoothed train curve and LR-drop marker
     epochs_x  = [h["epoch"] for h in history]
@@ -308,8 +383,9 @@ def main():
                label=f"LR drop ×{cfg.get('lr_decay', 0.1):.1f} (epoch 1)")
     ax.set_xlabel("Epoch")
     ax.set_ylabel("|Loss|  (log scale)")
+    model_label = args.model.upper()
     ax.set_title(
-        f"GRU Training — {len(history)} epochs  |  "
+        f"{model_label} Training — {len(history)} epochs  |  "
         f"lr={cfg['lr']:.0e}→{cfg['lr']*cfg.get('lr_decay',0.1):.0e}  "
         f"batch={cfg['batch_size']}  "
         f"λ_path={cfg.get('lambda_path',0):.0e}  λ_turn={cfg.get('lambda_turnover',0):.0e}"
@@ -317,18 +393,18 @@ def main():
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(fig_dir / "ipo_optimizer_loss.png", dpi=150)
-    fig.savefig(fig_dir / "ipo_optimizer_loss_semilog.png", dpi=150)
+    fig.savefig(fig_dir / f"ipo_optimizer_loss{result_suffix}.png", dpi=150)
+    fig.savefig(fig_dir / f"ipo_optimizer_loss_semilog{result_suffix}.png", dpi=150)
     plt.close()
-    print(f"Saved loss plot to {fig_dir / 'ipo_optimizer_loss_semilog.png'}")
+    print(f"Saved loss plot to {fig_dir / f'ipo_optimizer_loss_semilog{result_suffix}.png'}")
 
     weights = predict_weights(model, data["X_val"], device)
     stats = portfolio_stats(weights, data["R_val"])
 
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
-    weights_path = out_dir / "ipo_optimizer_weights.csv"
-    summary_path = out_dir / "ipo_optimizer_summary.txt"
+    weights_path = out_dir / f"ipo_optimizer_weights{result_suffix}.csv"
+    summary_path = out_dir / f"ipo_optimizer_summary{result_suffix}.txt"
 
     export_weights_csv(data["dates_val"], weights, weights_path)
     export_summary(stats, weights, summary_path, R=data["R_val"])

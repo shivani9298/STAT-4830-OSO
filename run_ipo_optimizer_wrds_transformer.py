@@ -12,6 +12,5 @@ from run_ipo_optimizer_wrds import main as run_main
 
 if __name__ == "__main__":
     sys.argv.insert(1, "--model")
-    sys.argv.insert(2, "lstm")
+    sys.argv.insert(2, "transformer")
     raise SystemExit(run_main())
-
