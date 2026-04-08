@@ -40,7 +40,12 @@ from src.data_layer import (
     build_rolling_windows,
     train_val_test_split,
 )
-from src.train import run_training, rolling_tail_excess_objective
+from src.train import (
+    mean_excess_vs_ew_selection_objective,
+    path_metrics_numpy,
+    run_training,
+    rolling_tail_excess_objective,
+)
 from src.export import predict_weights, portfolio_stats, export_weights_csv, export_summary
 from src.policy_layer import ipo_tilt_to_position_scale, policy_rule
 
@@ -65,6 +70,9 @@ DEFAULTS = {
     "lambda_path": 0.0001,
     "lambda_vol_excess": 1.0,
     "lambda_vs_ew": 0.0,
+    "lambda_log_return": 0.2,
+    "train_segment_len": 63,
+    "lambda_segment_log": 0.1,
     "target_vol_annual": 0.25,
     "hidden_size": 64,
     "lambda_diversify": 0.0,
@@ -361,8 +369,22 @@ def parse_args():
     parser.add_argument(
         "--selection-metric",
         default="rolling_tail_excess",
-        choices=["val_loss", "rolling_tail_excess"],
-        help="Early-stop/checkpoint selection metric.",
+        choices=[
+            "val_loss",
+            "rolling_tail_excess",
+            "mean_excess_vs_ew",
+            "val_compound_return",
+            "val_sharpe",
+            "val_sortino",
+            "val_max_drawdown",
+            "val_retail_composite",
+        ],
+        help=(
+            "Checkpoint / early-stop criterion on chronological validation weights. "
+            "val_* metrics use full val path: compound return, Sharpe, Sortino, max drawdown, "
+            "or val_retail_composite (Sharpe + 0.5 Sortino - drawdown_penalty*|maxDD|). "
+            "Use --selection-drawdown-penalty > 0 with val_retail_composite to penalize deep drawdowns."
+        ),
     )
     parser.add_argument(
         "--rolling-window",
@@ -380,7 +402,10 @@ def parse_args():
         "--selection-drawdown-penalty",
         type=float,
         default=0.0,
-        help="Optional drawdown penalty coefficient in rolling-tail selection objective.",
+        help=(
+            "Rolling-tail objective: drawdown term. "
+            "val_retail_composite: multiplies |max_drawdown| (use e.g. 0.5–2.0)."
+        ),
     )
     parser.add_argument(
         "--ipo-index-method",
@@ -402,6 +427,50 @@ def parse_args():
         "--prepare-only",
         action="store_true",
         help="Build cache and exit (no model training).",
+    )
+    parser.add_argument(
+        "--lambda-vs-ew",
+        type=float,
+        default=None,
+        metavar="LAMBDA",
+        help=(
+            "If set, overrides config: weight on penalizing underperformance vs equal-weight "
+            "daily return in each batch (see loss_excess_vs_equal_weight). "
+            "Try 0.2–1.0 when the model is too conservative vs 50/50. Omit to use config/DEFAULTS."
+        ),
+    )
+    parser.add_argument(
+        "--risk-penalty-scale",
+        type=float,
+        default=1.0,
+        help=(
+            "Multiplies λ_vol, λ_cvar, and λ_vol_excess after loading config. "
+            "Values below 1.0 (e.g. 0.5) reduce risk/regularization pressure relative to mean return."
+        ),
+    )
+    parser.add_argument(
+        "--lambda-log-return",
+        type=float,
+        default=None,
+        metavar="LAMBDA",
+        help="If set, weight on -mean(log(1+r)) in batch loss (long-run growth proxy). Else config/DEFAULTS.",
+    )
+    parser.add_argument(
+        "--train-segment-len",
+        type=int,
+        default=None,
+        metavar="L",
+        help=(
+            "If >0 with --lambda-segment-log, each train batch adds random contiguous "
+            "length-L log-growth loss (chronological subsample). Else config/DEFAULTS."
+        ),
+    )
+    parser.add_argument(
+        "--lambda-segment-log",
+        type=float,
+        default=None,
+        metavar="LAMBDA",
+        help="Weight on segment log-growth auxiliary loss (0 disables segment term).",
     )
     return parser.parse_args()
 
@@ -637,6 +706,19 @@ def main():
     feature_cols = data_prep["feature_cols"]
 
     cfg = load_best_config(model_type=args.model)
+    if args.lambda_vs_ew is not None:
+        cfg["lambda_vs_ew"] = float(args.lambda_vs_ew)
+    if args.risk_penalty_scale != 1.0:
+        s = float(args.risk_penalty_scale)
+        cfg["lambda_vol"] = float(cfg["lambda_vol"]) * s
+        cfg["lambda_cvar"] = float(cfg["lambda_cvar"]) * s
+        cfg["lambda_vol_excess"] = float(cfg.get("lambda_vol_excess", 1.0)) * s
+    if args.lambda_log_return is not None:
+        cfg["lambda_log_return"] = float(args.lambda_log_return)
+    if args.train_segment_len is not None:
+        cfg["train_segment_len"] = int(args.train_segment_len)
+    if args.lambda_segment_log is not None:
+        cfg["lambda_segment_log"] = float(args.lambda_segment_log)
     print(f"Hyperparameters ({args.model}): {cfg}")
 
     X, R, dates = build_rolling_windows(
@@ -700,6 +782,9 @@ def main():
         min_weight=cfg.get("min_weight", 0.1),
         lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
         lambda_vs_ew=cfg.get("lambda_vs_ew", 0.0),
+        lambda_log_return=cfg.get("lambda_log_return", 0.0),
+        train_segment_len=int(cfg.get("train_segment_len", 0)),
+        lambda_segment_log=float(cfg.get("lambda_segment_log", 0.0)),
         target_vol_annual=cfg.get("target_vol_annual", 0.25),
         hidden_size=cfg["hidden_size"],
         model_type=args.model,
@@ -799,6 +884,12 @@ def main():
         tail_quantile=args.rolling_tail_quantile,
         drawdown_penalty=args.selection_drawdown_penalty,
     )
+    _, val_mean_ex_diag = mean_excess_vs_ew_selection_objective(weights_val, data["R_val"])
+    _, test_mean_ex_diag = mean_excess_vs_ew_selection_objective(weights_test, data["R_test"])
+    port_val = (weights_val * data["R_val"]).sum(axis=1)
+    port_test = (weights_test * data["R_test"]).sum(axis=1)
+    path_val = path_metrics_numpy(port_val)
+    path_test = path_metrics_numpy(port_test)
 
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
@@ -834,11 +925,20 @@ def main():
     selection_payload = {
         "model": args.model,
         "selection_metric": args.selection_metric,
+        "lambda_vs_ew": cfg.get("lambda_vs_ew", 0.0),
+        "lambda_log_return": cfg.get("lambda_log_return", 0.0),
+        "train_segment_len": int(cfg.get("train_segment_len", 0)),
+        "lambda_segment_log": float(cfg.get("lambda_segment_log", 0.0)),
+        "risk_penalty_scale_applied": float(args.risk_penalty_scale),
         "rolling_window": args.rolling_window,
         "rolling_tail_quantile": args.rolling_tail_quantile,
         "selection_drawdown_penalty": args.selection_drawdown_penalty,
         "validation": {"objective": val_sel_obj, **val_sel_diag},
         "test": {"objective": test_sel_obj, **test_sel_diag},
+        "final_mean_excess_vs_ew_validation": val_mean_ex_diag["mean_excess_vs_ew"],
+        "final_mean_excess_vs_ew_test": test_mean_ex_diag["mean_excess_vs_ew"],
+        "final_path_metrics_validation": path_val,
+        "final_path_metrics_test": path_test,
     }
     with open(comparison_path, "w") as f:
         json.dump(selection_payload, f, indent=2)

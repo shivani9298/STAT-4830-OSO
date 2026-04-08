@@ -4,7 +4,8 @@
 Reads training_history*.csv, ipo_optimizer_returns_{val,test}*.csv, weights, and
 selection_metrics*.json from an artifacts directory (e.g. copied VM output).
 
-Writes comparison figures under figures/ (default: figures/model_comparison_vm/).
+Writes comparison figures under figures/ (default: figures/model_comparison_vm/), including
+test/val cumulative return overlays vs the 50/50 benchmark (linear scale).
 """
 from __future__ import annotations
 
@@ -215,6 +216,37 @@ def plot_holdout_cumwealth_semilogy(
     plt.close(fig)
 
 
+def plot_holdout_cumulative_return_benchmark_linear(
+    merged: dict[str, pd.DataFrame], split: str, out_path: Path
+) -> None:
+    """Cumulative total return Π(1+r)-1 for each model and the equal 50/50 benchmark (linear scale)."""
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    first = next(iter(merged.values()))
+    bench = np.cumprod(1.0 + first["equal_weight_return"].values) - 1.0
+    ax.plot(
+        first["date"],
+        bench,
+        label="Equal 50/50",
+        color="black",
+        linestyle="--",
+        linewidth=2.2,
+        zorder=2,
+    )
+    for model, df in merged.items():
+        cum_ret = np.cumprod(1.0 + df["model_return"].values) - 1.0
+        ax.plot(df["date"], cum_ret, label=model.upper(), linewidth=2)
+    ax.axhline(0.0, color="gray", linewidth=0.8, linestyle=":", alpha=0.6)
+    ax.set_title(f"{split.capitalize()}: cumulative return vs 50/50 benchmark")
+    # y = ∏(1+r_day)−1 over the holdout calendar (not annualized; grows fast if mean daily r is large).
+    ax.set_ylabel(r"Cumulative compound return, $\prod_t(1+r_t)-1$")
+    ax.set_xlabel("Date")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=160)
+    plt.close(fig)
+
+
 def plot_holdout_cum_excess_linear(merged: dict[str, pd.DataFrame], split: str, out_path: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 5))
     for model, df in merged.items():
@@ -367,6 +399,9 @@ def main() -> int:
         if not merged:
             continue
         plot_holdout_cumwealth_semilogy(merged, split, args.out_dir / f"{split}_cumwealth_semilogy.png")
+        plot_holdout_cumulative_return_benchmark_linear(
+            merged, split, args.out_dir / f"{split}_cumulative_return_benchmark_linear.png"
+        )
         plot_holdout_cum_excess_linear(merged, split, args.out_dir / f"{split}_cum_excess_vs_5050.png")
         plot_holdout_rolling_excess(merged, split, rolling, args.out_dir / f"{split}_rolling_excess_w{rolling}.png")
         plot_holdout_rolling_vol_semilogy(

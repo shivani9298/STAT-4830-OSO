@@ -1,9 +1,9 @@
 """
 Differentiable loss components for IPO portfolio optimization.
 
-L = -mean_return + lambda_cvar*CVaR + lambda_turnover*turnover
-    + lambda_vol*return_variance + lambda_path*weight_instability
-    + lambda_vs_ew * (-(port - equal_weight_return))
+L = -mean_return + lambda_log_return * (-mean(log(1+r)))
+    + lambda_cvar*CVaR + lambda_turnover*turnover + lambda_vol*variance
+    + lambda_path*path + lambda_vs_ew * (-(port - equal_weight_return)) + ...
 """
 from __future__ import annotations
 
@@ -21,6 +21,17 @@ def portfolio_returns(weights: torch.Tensor, returns: torch.Tensor) -> torch.Ten
 def loss_mean_return(port_ret: torch.Tensor) -> torch.Tensor:
     """Negative mean (minimize this = maximize mean)."""
     return -port_ret.mean()
+
+
+def loss_mean_log_growth(port_ret: torch.Tensor) -> torch.Tensor:
+    """
+    Negative mean log gross return: -mean(log(1+r)).
+
+    Minimizing this is equivalent to maximizing the per-period log growth rate,
+    a common proxy for long-run geometric (Kelly-type) objectives when returns are i.i.d.
+    """
+    x = port_ret.clamp(min=-0.999)
+    return -torch.log1p(x).mean()
 
 
 def cvar_smooth(port_ret: torch.Tensor, alpha: float = 0.05, temperature: float = 0.1) -> torch.Tensor:
@@ -107,6 +118,7 @@ def combined_loss(
     target_vol_annual: float = 0.20,
     lambda_diversify: float = 0.0,
     lambda_vs_ew: float = 0.0,
+    lambda_log_return: float = 0.0,
     min_weight: float = 0.1,
     cvar_alpha: float = 0.05,
 ) -> tuple[torch.Tensor, dict]:
@@ -121,6 +133,7 @@ def combined_loss(
     """
     port_ret = portfolio_returns(weights, returns)
     L_mean = loss_mean_return(port_ret)
+    L_log = loss_mean_log_growth(port_ret)
     cvar_val = cvar_smooth(port_ret, alpha=cvar_alpha)
     L_cvar = -cvar_val  # penalize when CVaR is negative (bad tail)
     L_turn = loss_turnover(weights, weights_prev)
@@ -133,6 +146,7 @@ def combined_loss(
 
     L = (
         L_mean
+        + lambda_log_return * L_log
         + lambda_cvar * L_cvar
         + lambda_turnover * L_turn
         + lambda_vol * L_vol
@@ -143,6 +157,7 @@ def combined_loss(
     )
     components = {
         "mean_return": -L_mean.item(),
+        "mean_log_growth": (-L_log).item(),
         "cvar": cvar_val.item(),
         "turnover": L_turn.item(),
         "volatility": L_vol.item(),

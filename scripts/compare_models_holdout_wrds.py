@@ -35,6 +35,34 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cache-dir", default=str(ROOT / "results" / "cache_wrds"))
     p.add_argument("--skip-train", action="store_true")
     p.add_argument("--models", nargs="+", default=["gru", "lstm", "transformer"])
+    p.add_argument(
+        "--selection-metric",
+        default="rolling_tail_excess",
+        choices=[
+            "val_loss",
+            "rolling_tail_excess",
+            "mean_excess_vs_ew",
+            "val_compound_return",
+            "val_sharpe",
+            "val_sortino",
+            "val_max_drawdown",
+            "val_retail_composite",
+        ],
+        help="Forwarded to run_ipo_optimizer_wrds.py",
+    )
+    p.add_argument(
+        "--lambda-vs-ew",
+        type=float,
+        default=None,
+        metavar="LAMBDA",
+        help="If set, forwarded to run_ipo_optimizer_wrds.py",
+    )
+    p.add_argument(
+        "--risk-penalty-scale",
+        type=float,
+        default=1.0,
+        help="Forwarded to run_ipo_optimizer_wrds.py",
+    )
     return p.parse_args()
 
 
@@ -49,7 +77,7 @@ def run_model(args: argparse.Namespace, model: str) -> None:
         "--end-date",
         args.end_date,
         "--selection-metric",
-        "rolling_tail_excess",
+        args.selection_metric,
         "--rolling-window",
         str(args.rolling_window),
         "--rolling-tail-quantile",
@@ -68,6 +96,10 @@ def run_model(args: argparse.Namespace, model: str) -> None:
         cmd.extend(["--val-start", args.val_start])
     if args.test_start:
         cmd.extend(["--test-start", args.test_start])
+    if args.lambda_vs_ew is not None:
+        cmd.extend(["--lambda-vs-ew", str(args.lambda_vs_ew)])
+    if args.risk_penalty_scale != 1.0:
+        cmd.extend(["--risk-penalty-scale", str(args.risk_penalty_scale)])
     print(f"[run] {model}: {' '.join(cmd)}", flush=True)
     subprocess.run(cmd, check=True, cwd=ROOT)
 
