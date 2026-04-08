@@ -30,6 +30,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--rolling-window", type=int, default=21)
     p.add_argument("--rolling-tail-quantile", type=float, default=0.10)
     p.add_argument("--selection-drawdown-penalty", type=float, default=0.0)
+    p.add_argument("--ipo-index-method", default="fast", choices=["fast", "legacy"])
+    p.add_argument("--use-cache", action="store_true")
+    p.add_argument("--cache-dir", default=str(ROOT / "results" / "cache_wrds"))
     p.add_argument("--skip-train", action="store_true")
     p.add_argument("--models", nargs="+", default=["gru", "lstm", "transformer"])
     return p.parse_args()
@@ -53,9 +56,14 @@ def run_model(args: argparse.Namespace, model: str) -> None:
         str(args.rolling_tail_quantile),
         "--selection-drawdown-penalty",
         str(args.selection_drawdown_penalty),
+        "--ipo-index-method",
+        args.ipo_index_method,
     ]
     if args.max_history:
         cmd.append("--max-history")
+    if args.use_cache:
+        cmd.append("--use-cache")
+        cmd.extend(["--cache-dir", args.cache_dir])
     if args.val_start:
         cmd.extend(["--val-start", args.val_start])
     if args.test_start:

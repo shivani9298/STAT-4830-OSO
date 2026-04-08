@@ -144,7 +144,14 @@ def add_optional_features(
     df["rolling_vol"] = df["market_return"].rolling(21, min_periods=5).std()
     df["rolling_vol"] = df["rolling_vol"].bfill().fillna(0.01)
     if vix_series is not None and len(vix_series) > 0:
-        df["vix"] = vix_series.reindex(df.index).ffill().bfill().fillna(20.0)
+        # WRDS extracts can contain duplicate date labels; collapse to last value per date
+        # so reindexing onto the model dataframe is well-defined.
+        vix = vix_series.copy()
+        vix.index = pd.to_datetime(vix.index)
+        if getattr(vix.index, "has_duplicates", False):
+            vix = vix.groupby(level=0).last()
+        vix = vix.sort_index()
+        df["vix"] = vix.reindex(df.index).ffill().bfill().fillna(20.0)
     elif include_vix and yf is not None:
         try:
             vix = yf.download("^VIX", start=df.index.min(), end=df.index.max(), progress=False)

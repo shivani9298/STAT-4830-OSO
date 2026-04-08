@@ -3,6 +3,7 @@ Differentiable loss components for IPO portfolio optimization.
 
 L = -mean_return + lambda_cvar*CVaR + lambda_turnover*turnover
     + lambda_vol*return_variance + lambda_path*weight_instability
+    + lambda_vs_ew * (-(port - equal_weight_return))
 """
 from __future__ import annotations
 
@@ -82,6 +83,18 @@ def loss_diversification_min_weight(weights: torch.Tensor, min_weight: float = 0
     return torch.relu(min_weight - w_min).mean()
 
 
+def loss_excess_vs_equal_weight(returns: torch.Tensor, port_ret: torch.Tensor) -> torch.Tensor:
+    """
+    Penalize underperformance vs fixed equal-weight benchmark (1/K each asset).
+
+    Equal-weight return per row: mean_i r_i.
+    Minimizing L = -(port - ew).mean() maximizes excess return over equal-weight.
+    """
+    ew_ret = returns.mean(dim=-1)
+    excess = port_ret - ew_ret
+    return -excess.mean()
+
+
 def combined_loss(
     weights: torch.Tensor,
     returns: torch.Tensor,
@@ -93,6 +106,7 @@ def combined_loss(
     lambda_vol_excess: float = 0.0,
     target_vol_annual: float = 0.20,
     lambda_diversify: float = 0.0,
+    lambda_vs_ew: float = 0.0,
     min_weight: float = 0.1,
     cvar_alpha: float = 0.05,
 ) -> tuple[torch.Tensor, dict]:
@@ -114,6 +128,8 @@ def combined_loss(
     L_vol_excess = loss_vol_excess(port_ret, target_vol_annual=target_vol_annual)
     L_path = loss_weight_path(weights, weights_prev)
     L_div = loss_diversification_min_weight(weights, min_weight=min_weight)
+    L_vs_ew = loss_excess_vs_equal_weight(returns, port_ret)
+    excess_mean = float((port_ret - returns.mean(dim=-1)).mean().item())
 
     L = (
         L_mean
@@ -123,6 +139,7 @@ def combined_loss(
         + lambda_vol_excess * L_vol_excess
         + lambda_path * L_path
         + lambda_diversify * L_div
+        + lambda_vs_ew * L_vs_ew
     )
     components = {
         "mean_return": -L_mean.item(),
@@ -132,5 +149,6 @@ def combined_loss(
         "vol_excess": L_vol_excess.item(),
         "weight_path": L_path.item(),
         "diversify": L_div.item(),
+        "excess_vs_ew": excess_mean,
     }
     return L, components

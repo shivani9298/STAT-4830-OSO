@@ -48,6 +48,7 @@ DEFAULT_START_DATE = os.environ.get("IPO_START_DATE", "2020-01-01")
 DEFAULT_END_DATE = os.environ.get("IPO_END_DATE", "2025-12-31")
 DEFAULT_VAL_START = os.environ.get("IPO_VAL_START")
 DEFAULT_TEST_START = os.environ.get("IPO_TEST_START")
+DEFAULT_CACHE_DIR = os.environ.get("IPO_CACHE_DIR", str(ROOT / "results" / "cache_wrds"))
 
 DEFAULTS = {
     "window_len": 126,
@@ -100,7 +101,7 @@ def load_best_config(model_type: str = "gru"):
     return cfg
 
 
-def build_ipo_index_mcap(
+def build_ipo_index_mcap_legacy(
     prices_df,
     ipo_dates_df,
     shares_dict,
@@ -176,6 +177,154 @@ def build_ipo_index_mcap(
     return pd.DataFrame(index_data).set_index("date")
 
 
+def build_ipo_index_mcap_fast(
+    prices_df: pd.DataFrame,
+    ipo_dates_df: pd.DataFrame,
+    shares_dict: dict,
+    sector_id_map: dict | None = None,
+    holding_days: int = 180,
+    min_names: int = 1,
+    progress_every: int = 1000,
+) -> pd.DataFrame:
+    """
+    Vectorized-ish IPO index construction.
+
+    Keeps the same economic definition as the legacy builder:
+    - active window = first `holding_days` trading observations on/after IPO date
+    - mcap weight per day = price * shares
+    - return uses only names with non-null returns that day
+    """
+    sector_id_map = sector_id_map or {}
+    dates = prices_df.index.values.astype("datetime64[ns]")
+    T = len(dates)
+    total_mcap = np.zeros(T, dtype=np.float64)
+    ret_num = np.zeros(T, dtype=np.float64)
+    ret_valid_count = np.zeros(T, dtype=np.int32)
+    active_name_count = np.zeros(T, dtype=np.int32)
+    sector_num = np.zeros(T, dtype=np.float64)
+    sector_den = np.zeros(T, dtype=np.float64)
+
+    ipo_lookup = dict(zip(ipo_dates_df["ticker"], ipo_dates_df["ipo_date"]))
+    tickers = [t for t in prices_df.columns if t in ipo_lookup and t in shares_dict]
+
+    sector_values = sorted(
+        {
+            float(v)
+            for v in sector_id_map.values()
+            if v is not None and pd.notna(v)
+        }
+    )
+    sector_to_idx = {sid: i for i, sid in enumerate(sector_values)}
+    sector_presence = np.zeros((T, len(sector_values)), dtype=bool) if sector_values else None
+
+    for i, ticker in enumerate(tickers, start=1):
+        try:
+            shares = float(shares_dict[ticker])
+            if not np.isfinite(shares) or shares <= 0:
+                continue
+
+            s = prices_df[ticker]
+            p = s.to_numpy(dtype=np.float64)
+            valid_non_nan = np.isfinite(p)
+            valid_idx = np.flatnonzero(valid_non_nan)
+            if valid_idx.size == 0:
+                continue
+
+            ipo_d = np.datetime64(pd.Timestamp(ipo_lookup[ticker]).to_datetime64())
+            trade_dates = dates[valid_idx]
+            start_ord = np.searchsorted(trade_dates, ipo_d, side="left")
+            if start_ord >= valid_idx.size:
+                continue
+            end_ord = min(start_ord + holding_days, valid_idx.size)
+            active_idx = valid_idx[start_ord:end_ord]
+            if active_idx.size == 0:
+                continue
+
+            active_price = p[active_idx]
+            pos_mask = active_price > 0
+            if not np.any(pos_mask):
+                continue
+            active_idx = active_idx[pos_mask]
+            mcap = active_price[pos_mask] * shares
+
+            total_mcap[active_idx] += mcap
+            active_name_count[active_idx] += 1
+
+            r = s.pct_change().to_numpy(dtype=np.float64)
+            valid_r = np.isfinite(r[active_idx])
+            if np.any(valid_r):
+                idx_r = active_idx[valid_r]
+                ret_num[idx_r] += mcap[valid_r] * r[idx_r]
+                ret_valid_count[idx_r] += 1
+
+            sid = sector_id_map.get(ticker)
+            if sid is not None and pd.notna(sid):
+                sid = float(sid)
+                sector_num[active_idx] += mcap * sid
+                sector_den[active_idx] += mcap
+                if sector_presence is not None and sid in sector_to_idx:
+                    sector_presence[active_idx, sector_to_idx[sid]] = True
+        except Exception:
+            # Keep robust behavior of legacy path and continue ticker-by-ticker.
+            continue
+
+        if progress_every > 0 and (i % progress_every == 0):
+            print(f"IPO index build progress: {i}/{len(tickers)} tickers processed", flush=True)
+
+    active_ok = (active_name_count >= min_names) & (total_mcap > 0)
+    ret_ok = active_ok & (ret_valid_count >= min_names)
+    ipo_ret = np.full(T, np.nan, dtype=np.float64)
+    ipo_ret[ret_ok] = ret_num[ret_ok] / total_mcap[ret_ok]
+
+    sector_id_wavg = np.full(T, np.nan, dtype=np.float64)
+    sector_valid = active_ok & (sector_den > 0)
+    sector_id_wavg[sector_valid] = sector_num[sector_valid] / sector_den[sector_valid]
+    if sector_presence is not None and sector_presence.shape[1] > 0:
+        sector_count = sector_presence.sum(axis=1).astype(np.int32)
+    else:
+        sector_count = np.zeros(T, dtype=np.int32)
+    sector_count[~active_ok] = 0
+
+    return pd.DataFrame(
+        {
+            "ipo_ret": ipo_ret,
+            "ipo_sector_id_wavg": sector_id_wavg,
+            "ipo_sector_count": sector_count,
+        },
+        index=prices_df.index,
+    )
+
+
+def build_ipo_index_mcap(
+    prices_df,
+    ipo_dates_df,
+    shares_dict,
+    sector_id_map=None,
+    holding_days=180,
+    min_names=1,
+    method: str = "fast",
+):
+    if method == "legacy":
+        return build_ipo_index_mcap_legacy(
+            prices_df,
+            ipo_dates_df,
+            shares_dict,
+            sector_id_map=sector_id_map,
+            holding_days=holding_days,
+            min_names=min_names,
+        )
+    progress_every = int(os.environ.get("IPO_INDEX_PROGRESS_EVERY", "1000"))
+    return build_ipo_index_mcap_fast(
+        prices_df,
+        ipo_dates_df,
+        shares_dict,
+        sector_id_map=sector_id_map,
+        holding_days=holding_days,
+        min_names=min_names,
+        progress_every=progress_every,
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run IPO optimizer with WRDS data.")
     parser.add_argument(
@@ -233,7 +382,58 @@ def parse_args():
         default=0.0,
         help="Optional drawdown penalty coefficient in rolling-tail selection objective.",
     )
+    parser.add_argument(
+        "--ipo-index-method",
+        default="fast",
+        choices=["fast", "legacy"],
+        help="Implementation used to build IPO mcap index.",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default=DEFAULT_CACHE_DIR,
+        help="Directory for prepared WRDS cache (df + feature columns).",
+    )
+    parser.add_argument(
+        "--use-cache",
+        action="store_true",
+        help="Use prebuilt cache from --cache-dir instead of pulling/building WRDS data.",
+    )
+    parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="Build cache and exit (no model training).",
+    )
     return parser.parse_args()
+
+
+def save_prep_cache(cache_dir: Path, data_prep: dict, metadata: dict) -> None:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    df_path = cache_dir / "prepared_df.pkl"
+    meta_path = cache_dir / "prepared_meta.json"
+    data_prep["df"].to_pickle(df_path)
+    payload = {
+        "feature_cols": data_prep["feature_cols"],
+        **metadata,
+    }
+    with open(meta_path, "w") as f:
+        json.dump(payload, f, indent=2)
+    print(f"Saved prepared cache: {df_path}")
+    print(f"Saved cache metadata: {meta_path}")
+
+
+def load_prep_cache(cache_dir: Path) -> dict:
+    df_path = cache_dir / "prepared_df.pkl"
+    meta_path = cache_dir / "prepared_meta.json"
+    if not df_path.exists() or not meta_path.exists():
+        raise FileNotFoundError(
+            f"Cache not found in {cache_dir}. Expected files: prepared_df.pkl and prepared_meta.json"
+        )
+    with open(meta_path) as f:
+        meta = json.load(f)
+    df = pd.read_pickle(df_path)
+    feature_cols = meta.get("feature_cols", list(df.columns))
+    print(f"Loaded prepared cache: {df_path}")
+    return {"df": df, "feature_cols": feature_cols, "meta": meta}
 
 
 def find_earliest_ipo_date(conn, end_date: str | None = None, library: str = "sdc", date_column: str = "ipodate"):
@@ -263,7 +463,13 @@ def find_earliest_ipo_date(conn, end_date: str | None = None, library: str = "sd
     return best_date
 
 
-def prepare_data(conn, start_date: str, end_date: str, max_history: bool = False):
+def prepare_data(
+    conn,
+    start_date: str,
+    end_date: str,
+    max_history: bool = False,
+    ipo_index_method: str = "fast",
+):
     """Load and prepare IPO + market data. Returns dict with df, feature_cols for rolling windows."""
     if max_history:
         earliest = find_earliest_ipo_date(conn, end_date=end_date, library="sdc", date_column="ipodate")
@@ -375,6 +581,7 @@ def prepare_data(conn, start_date: str, end_date: str, max_history: bool = False
         shares_outstanding,
         sector_id_map=sector_id_map,
         holding_days=180,
+        method=ipo_index_method,
     )
     print(f"IPO index: {ipo_index['ipo_ret'].notna().sum()} days with valid returns")
 
@@ -395,16 +602,37 @@ def prepare_data(conn, start_date: str, end_date: str, max_history: bool = False
 
 def main():
     args = parse_args()
-    print("Connecting to WRDS...")
-    conn = get_connection()
-    print("Connected.")
+    cache_dir = Path(args.cache_dir)
+    if args.use_cache:
+        cached = load_prep_cache(cache_dir)
+        data_prep = {"df": cached["df"], "feature_cols": cached["feature_cols"]}
+    else:
+        print("Connecting to WRDS...")
+        conn = get_connection()
+        print("Connected.")
+        data_prep = prepare_data(
+            conn,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            max_history=args.max_history,
+            ipo_index_method=args.ipo_index_method,
+        )
+        cache_meta = {
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+            "max_history": bool(args.max_history),
+            "prepared_at_utc": pd.Timestamp.utcnow().isoformat(),
+        }
+        save_prep_cache(cache_dir, data_prep, cache_meta)
+        try:
+            conn.close()
+        except Exception:
+            pass
 
-    data_prep = prepare_data(
-        conn,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        max_history=args.max_history,
-    )
+    if args.prepare_only:
+        print("Prepare-only mode complete. Exiting without training.")
+        return 0
+
     df = data_prep["df"]
     feature_cols = data_prep["feature_cols"]
 
