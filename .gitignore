@@ -15,3 +15,11 @@ datasets/
 # Python cache
 __pycache__/
 *.pyc
+
+# Local / VM artifacts (do not commit)
+.cache/
+.matplotlib-cache/
+logs/
+vm_artifacts_*/
+results/cache_wrds_maxhist/
+final_outputs.tar.gz
