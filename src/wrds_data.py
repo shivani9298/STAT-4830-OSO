@@ -19,6 +19,157 @@ try:
 except ImportError:
     wrds = None
 
+_WRDS_CONNECT_PATCHED = False
+_WRDS_RAW_SQL_PATCHED = False
+
+
+def _wrap_sqlalchemy_connection_str_execute(conn) -> None:
+    """
+    SQLAlchemy 2.0+ requires sqlalchemy.text() for raw string SQL passed to
+    connection.execute(). wrds calls execute(big_string) in load_library_list,
+    get_row_count, and __get_schema_for_view.
+    """
+    if getattr(conn, "_wrds_text_execute_wrapped", False):
+        return
+    import sqlalchemy as sa
+    from sqlalchemy import text
+    from packaging.version import Version
+
+    if Version(sa.__version__) < Version("2.0.0"):
+        return
+    try:
+        orig_execute = conn.execute
+    except AttributeError:
+        return
+
+    def execute(statement, *args, **kwargs):
+        if isinstance(statement, str):
+            statement = text(statement)
+        return orig_execute(statement, *args, **kwargs)
+
+    execute.__name__ = getattr(orig_execute, "__name__", "execute")
+    execute.__doc__ = getattr(orig_execute, "__doc__", None)
+    setattr(execute, "__wrapped__", orig_execute)
+    conn.execute = execute  # type: ignore[method-assign]
+    setattr(conn, "_wrds_text_execute_wrapped", True)
+
+
+def _patch_wrds_connection_for_sqlalchemy2() -> None:
+    """Patch wrds.Connection.connect to wrap SA connection.execute for SQLAlchemy 2."""
+    global _WRDS_CONNECT_PATCHED
+    if _WRDS_CONNECT_PATCHED or wrds is None:
+        return
+    import sqlalchemy as sa
+    from packaging.version import Version
+
+    if Version(sa.__version__) < Version("2.0.0"):
+        return
+    from wrds.sql import Connection
+
+    _orig_connect = Connection.connect
+
+    def connect(self):
+        _orig_connect(self)
+        if getattr(self, "connection", None) is not None:
+            _wrap_sqlalchemy_connection_str_execute(self.connection)
+
+    Connection.connect = connect  # type: ignore[assignment]
+    _WRDS_CONNECT_PATCHED = True
+
+
+def _apply_wrds_sqlalchemy_patches() -> None:
+    """Apply WRDS + SQLAlchemy 2 compatibility patches (once per process)."""
+    _patch_wrds_connection_for_sqlalchemy2()
+    _patch_wrds_raw_sql_use_engine()
+
+
+def ensure_sqlalchemy_compat_for_pandas() -> None:
+    """
+    Pandas 2.3+ and 3.x require SQLAlchemy >= 2.0 for pandas.io.sql. With SQLAlchemy
+    1.4, ``import_optional_dependency("sqlalchemy", errors="ignore")`` returns None,
+    so ``pd.read_sql_query(..., engine)`` falls through to SQLiteDatabase and raises
+    AttributeError on ``Engine`` / ``Connection`` (no ``.cursor()``).
+    """
+    try:
+        import sqlalchemy as sa
+    except ImportError as e:
+        raise RuntimeError(
+            "SQLAlchemy is required for pandas + WRDS. "
+            'Install: pip install "sqlalchemy>=2.0.36"'
+        ) from e
+    try:
+        from packaging.version import Version
+    except ImportError:
+        segs = (sa.__version__.split(".") + ["0", "0", "0"])[:3]
+        parts = tuple(int(x) for x in segs)
+        if parts < (2, 0, 36):
+            raise RuntimeError(
+                f"SQLAlchemy {sa.__version__} is too old for pandas {pd.__version__}. "
+                'Upgrade: pip install -U "sqlalchemy>=2.0.36"'
+            )
+        return
+    if Version(sa.__version__) < Version("2.0.36"):
+        raise RuntimeError(
+            f"SQLAlchemy {sa.__version__} is too old for pandas {pd.__version__}. "
+            'Upgrade: pip install -U "sqlalchemy>=2.0.36"'
+        )
+
+
+def _patch_wrds_raw_sql_use_engine() -> None:
+    """
+    wrds passes self.connection to pd.read_sql_query. With SQLAlchemy 2, use
+    ``text(sql)`` and the open connection so pandas routes to SQLAlchemy correctly.
+    """
+    global _WRDS_RAW_SQL_PATCHED
+    if _WRDS_RAW_SQL_PATCHED or wrds is None:
+        return
+    import sqlalchemy as sa
+    from sqlalchemy import text
+    from wrds.sql import Connection
+
+    def raw_sql(
+        self,
+        sql,
+        coerce_float=True,
+        date_cols=None,
+        index_col=None,
+        params=None,
+        chunksize=500000,
+        return_iter=False,
+    ):
+        try:
+            stmt = text(sql) if isinstance(sql, str) else sql
+            df = pd.read_sql_query(
+                stmt,
+                self.connection,
+                coerce_float=coerce_float,
+                parse_dates=date_cols,
+                index_col=index_col,
+                chunksize=chunksize,
+                params=params,
+            )
+            if return_iter or chunksize is None:
+                return df
+            full_df = pd.DataFrame()
+            for chunk in df:
+                full_df = pd.concat([full_df, chunk])
+            return full_df
+        except sa.exc.ProgrammingError:
+            raise
+
+    Connection.raw_sql = raw_sql  # type: ignore[assignment]
+    _WRDS_RAW_SQL_PATCHED = True
+
+
+def close_wrds_connection(conn) -> None:
+    """Release WRDS PostgreSQL slot after ``prepare_data`` (or any blocking I/O)."""
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception:
+        pass
+
 
 def get_connection(
     wrds_username: Optional[str] = None,
@@ -26,6 +177,9 @@ def get_connection(
 ):
     """
     Connect to WRDS.
+
+    Requires SQLAlchemy >= 2.0.36 (see requirements.txt). Patches WRDS for SQLAlchemy 2
+    (``text()`` for raw SQL in ``execute`` and pandas ``read_sql_query``).
 
     Args:
         wrds_username: WRDS username. If None, uses env WRDS_USERNAME or prompts.
@@ -36,7 +190,10 @@ def get_connection(
 
     Raises:
         ImportError: if the wrds package is not installed.
+        RuntimeError: if SQLAlchemy is missing or too old for pandas 3.
     """
+    ensure_sqlalchemy_compat_for_pandas()
+    _apply_wrds_sqlalchemy_patches()
     if wrds is None:
         raise ImportError("wrds is required. Install with: uv add wrds  or  pip install wrds")
     username = wrds_username or os.environ.get("WRDS_USERNAME")
@@ -52,6 +209,121 @@ def get_connection(
         conn.load_library_list()
         return conn
     return wrds.Connection(wrds_username=username)
+
+
+# Patch WRDS once at import when SQLAlchemy 2+ is present so direct
+# ``wrds.Connection()`` (not only ``get_connection()``) gets execute fixes.
+try:
+    import sqlalchemy as _sa_for_patch
+    from packaging.version import Version as _Version
+
+    if wrds is not None and _Version(_sa_for_patch.__version__) >= _Version("2.0.0"):
+        _apply_wrds_sqlalchemy_patches()
+except Exception:
+    pass
+
+
+# Compustat ``comp.company`` GICS sector code (gsector) → sector name (GICS 2-digit standard).
+# Unknown codes fall back to "GICS_{code}" so groups remain distinct.
+GICS_GSECTOR_TO_NAME: dict[str, str] = {
+    "10": "Energy",
+    "15": "Materials",
+    "20": "Industrials",
+    "25": "Consumer_Discretionary",
+    "30": "Consumer_Staples",
+    "35": "Health_Care",
+    "40": "Financials",
+    "45": "Information_Technology",
+    "50": "Communication_Services",
+    "55": "Utilities",
+    "60": "Real_Estate",
+}
+
+
+def _normalize_gsector_code(raw) -> str | None:
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None
+    s = str(raw).strip()
+    if not s or s.lower() in ("nan", "none"):
+        return None
+    # Compustat often stores 2-digit strings; allow ints
+    try:
+        if "." in s:
+            s = str(int(float(s)))
+        elif s.isdigit():
+            s = str(int(s))
+    except (ValueError, TypeError):
+        pass
+    if len(s) == 1:
+        s = s.zfill(2)
+    return s
+
+
+def gics_sector_name_from_code(code) -> str:
+    """Human-readable sector label for ``gsector``; spaces → underscores for column names."""
+    c = _normalize_gsector_code(code)
+    if c is None:
+        return "Unknown"
+    return GICS_GSECTOR_TO_NAME.get(c, f"GICS_{c}")
+
+
+def load_gics_sectors_for_tickers_wrds(conn, tickers: list[str]) -> pd.DataFrame:
+    """
+    Map CRSP/SDC-style tickers to GICS sector names using Compustat.
+
+    On WRDS PostgreSQL, ``comp.company`` does not expose ``tic``; tickers live on
+    ``comp.funda``. This joins ``comp.funda`` (latest ``datadate`` per ticker) to
+    ``comp.company`` on ``gvkey`` to read ``gsector``. Tickers not found or with null
+    ``gsector`` are omitted from the result (caller should treat missing as Unknown).
+
+    Parameters
+    ----------
+    conn : wrds.Connection
+    tickers : list of ticker strings (matched UPPER/TRIM).
+
+    Returns
+    -------
+    DataFrame columns: ``ticker``, ``gsector``, ``sector`` (display name).
+    """
+    tickers = sorted({str(t).upper().replace(".", "-").strip() for t in tickers if t})
+    if not tickers:
+        return pd.DataFrame(columns=["ticker", "gsector", "sector"])
+
+    # Chunk IN lists for very large universes
+    chunks: list[pd.DataFrame] = []
+    chunk_size = 400
+    for i in range(0, len(tickers), chunk_size):
+        part = tickers[i : i + chunk_size]
+        in_list = ",".join("'" + t.replace("'", "''") + "'" for t in part)
+        sql = f"""
+            WITH latest AS (
+                SELECT gvkey, tic,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY UPPER(TRIM(tic)) ORDER BY datadate DESC
+                    ) AS rn
+                FROM comp.funda
+                WHERE UPPER(TRIM(tic)) IN ({in_list})
+            )
+            SELECT UPPER(TRIM(l.tic)) AS ticker, c.gsector
+            FROM latest l
+            INNER JOIN comp.company c ON c.gvkey = l.gvkey
+            WHERE l.rn = 1
+        """
+        df = conn.raw_sql(sql)
+        if df is not None and len(df) > 0:
+            chunks.append(df)
+
+    if not chunks:
+        return pd.DataFrame(columns=["ticker", "gsector", "sector"])
+
+    out = pd.concat(chunks, ignore_index=True)
+    if "gsector" not in out.columns:
+        return pd.DataFrame(columns=["ticker", "gsector", "sector"])
+    out["ticker"] = out["ticker"].astype(str).str.upper().str.strip()
+    # Prefer rows with non-null gsector when duplicate tickers exist
+    out = out.sort_values("gsector", na_position="last").drop_duplicates(subset=["ticker"], keep="first")
+    out["sector"] = out["gsector"].map(gics_sector_name_from_code)
+    return out[["ticker", "gsector", "sector"]]
 
 
 def load_market_returns_wrds(
@@ -443,7 +715,7 @@ def list_wrds_tables(conn, library: str) -> list[str]:
 
 def load_sdc_new_deals_wrds(
     conn,
-    start: str = "2020-01-01",
+    start: str = "2010-01-01",
     end: Optional[str] = None,
     library: str = "sdc",
     table: Optional[str] = None,
@@ -501,7 +773,7 @@ def load_sdc_new_deals_wrds(
 
 def load_sdc_ipo_dates_wrds(
     conn,
-    start: str = "2020-01-01",
+    start: str = "2010-01-01",
     end: Optional[str] = None,
     library: str = "sdc",
     table: Optional[str] = None,
@@ -556,7 +828,7 @@ def load_sdc_ipo_dates_wrds(
 
 def load_sdc_ipo_tickers_wrds(
     conn,
-    start: str = "2024-01-01",
+    start: str = "2010-01-01",
     end: Optional[str] = None,
     library: str = "sdc",
     table: Optional[str] = None,
@@ -564,7 +836,7 @@ def load_sdc_ipo_tickers_wrds(
     ticker_column: Optional[str] = None,
 ) -> list[str]:
     """
-    Extract unique IPO ticker symbols from SDC New Deals (2024-2025).
+    Extract unique IPO ticker symbols from SDC New Deals (filtered by start/end).
 
     Args:
         conn: wrds.Connection from get_connection().
@@ -608,7 +880,7 @@ def load_sdc_ipo_tickers_wrds(
 def load_crsp_daily_prices_wrds(
     conn,
     tickers: list[str],
-    start: str = "2020-01-01",
+    start: str = "2010-01-01",
     end: Optional[str] = None,
 ) -> pd.DataFrame:
     """
@@ -677,14 +949,14 @@ def load_crsp_daily_prices_wrds(
 def load_compustat_daily_prices_wrds(
     conn,
     tickers: list[str],
-    start: str = "2024-01-01",
+    start: str = "2010-01-01",
     end: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load daily open (prcod) and close (prccd) prices from Compustat for given tickers.
 
     Returns DataFrame with columns: tic, datadate, prccd, prcod, gvkey (and cusip if available)
-    to match the structure expected by the IPO optimizer (like 2025iposdata.csv).
+    to match the structure expected by the IPO optimizer (CSV-style panel).
 
     Args:
         conn: wrds.Connection from get_connection().
@@ -706,7 +978,7 @@ def load_compustat_daily_prices_wrds(
             SELECT tic, gvkey, ROW_NUMBER() OVER (PARTITION BY tic ORDER BY datadate DESC) AS rn
             FROM comp.funda
             WHERE tic IN ({ticker_list})
-              AND datadate >= '2018-01-01'
+              AND datadate >= '2010-01-01'
               AND csho > 0
               AND indfmt = 'INDL' AND datafmt = 'STD'
         ) f ON f.gvkey = s.gvkey AND f.rn = 1
@@ -724,7 +996,7 @@ def load_compustat_daily_prices_wrds(
                 SELECT tic, gvkey, ROW_NUMBER() OVER (PARTITION BY tic ORDER BY datadate DESC) AS rn
                 FROM comp.funda
                 WHERE tic IN ({ticker_list})
-                  AND datadate >= '2018-01-01'
+                  AND datadate >= '2010-01-01'
                   AND csho > 0
                   AND indfmt = 'INDL' AND datafmt = 'STD'
             ) f ON f.gvkey = s.gvkey AND f.rn = 1
@@ -742,8 +1014,8 @@ def load_compustat_daily_prices_wrds(
 
 def load_ipo_data_from_sdc_wrds(
     conn,
-    start: str = "2024-01-01",
-    end: str = "2025-12-31",
+    start: str = "2010-01-01",
+    end: str = "2024-12-31",
     library: str = "sdc",
     table: Optional[str] = None,
     date_column: str = "ipodate",
@@ -769,6 +1041,7 @@ def load_ipo_data_from_sdc_wrds(
         DataFrame with tic, datadate, prccd, prcod, and either shrout (CRSP)
         or gvkey (Compustat).
     """
+    print("[IPO] WRDS: fetching IPO ticker list from SDC...", flush=True)
     tickers = load_sdc_ipo_tickers_wrds(
         conn, start=start, end=end, library=library,
         table=table, date_column=date_column
@@ -778,6 +1051,11 @@ def load_ipo_data_from_sdc_wrds(
             return pd.DataFrame(columns=["tic", "datadate", "prccd", "prcod", "shrout"])
         return pd.DataFrame(columns=["tic", "datadate", "prccd", "prcod", "gvkey"])
     if price_source == "crsp":
+        print(
+            f"[IPO] WRDS: loading CRSP daily prices for {len(tickers)} tickers "
+            f"({start}–{end})...",
+            flush=True,
+        )
         prices = load_crsp_daily_prices_wrds(conn, tickers=tickers, start=start, end=end)
         if prices.empty:
             return pd.DataFrame(columns=["tic", "datadate", "prccd", "prcod", "shrout"])

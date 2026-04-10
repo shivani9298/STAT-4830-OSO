@@ -151,6 +151,11 @@ def _training_kw(cfg: dict) -> dict:
         "weight_decay": cfg.get("weight_decay", 1e-5),
         "dropout": cfg.get("dropout", 0.1),
         "cosine_lr": cfg.get("cosine_lr", False),
+        "lr_schedule": cfg.get("lr_schedule"),
+        "lr_decay": cfg.get("lr_decay", 0.5),
+        "plateau_patience": cfg.get("plateau_patience", 4),
+        "min_lr": cfg.get("min_lr", 1e-6),
+        "exponential_gamma": cfg.get("exponential_gamma", 0.99),
     }
 
 
