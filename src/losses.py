@@ -1,7 +1,7 @@
 """
 Differentiable loss components for IPO portfolio optimization.
 
-L = -mean_return + lambda_cvar*CVaR + lambda_turnover*turnover
+L = mean_return_weight*(-mean_return) + lambda_cvar*CVaR + ... + log_growth_weight*(-mean log(1+r))
     + lambda_vol*return_variance + lambda_path*weight_instability
 """
 from __future__ import annotations
@@ -20,6 +20,15 @@ def portfolio_returns(weights: torch.Tensor, returns: torch.Tensor) -> torch.Ten
 def loss_mean_return(port_ret: torch.Tensor) -> torch.Tensor:
     """Negative mean (minimize this = maximize mean)."""
     return -port_ret.mean()
+
+
+def loss_log_growth_proxy(port_ret: torch.Tensor) -> torch.Tensor:
+    """
+    Negative mean log(1 + r). Minimizing ``k * loss_log_growth_proxy`` for k > 0 pushes toward
+    higher **geometric** growth within the batch (closer to maximizing compound return than mean alone).
+    """
+    x = port_ret.clamp(min=-0.999999)
+    return -torch.log1p(x).mean()
 
 
 def cvar_smooth(port_ret: torch.Tensor, alpha: float = 0.05, temperature: float = 0.1) -> torch.Tensor:
@@ -95,11 +104,17 @@ def combined_loss(
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
     cvar_alpha: float = 0.05,
+    mean_return_weight: float = 1.0,
+    log_growth_weight: float = 0.0,
 ) -> tuple[torch.Tensor, dict]:
     """
     Combined loss L and component dict for logging.
 
     weights: (B, n_assets), returns: (B, n_assets)
+
+    ``mean_return_weight`` (>0): scales the daily **mean return** term vs risk penalties; use >1 to
+    prioritize level returns. ``log_growth_weight`` (>=0): adds ``-mean(log(1+r))``, a differentiable
+    proxy for **compound** growth within the batch (often correlates better with total return than mean alone).
 
     Why 100% IPO before diversify penalty:
     - Loss minimizes -mean_return + risk terms. IPO vastly outperformed market in-sample.
@@ -107,6 +122,7 @@ def combined_loss(
     """
     port_ret = portfolio_returns(weights, returns)
     L_mean = loss_mean_return(port_ret)
+    L_log = loss_log_growth_proxy(port_ret)
     cvar_val = cvar_smooth(port_ret, alpha=cvar_alpha)
     L_cvar = -cvar_val  # penalize when CVaR is negative (bad tail)
     L_turn = loss_turnover(weights, weights_prev)
@@ -116,7 +132,8 @@ def combined_loss(
     L_div = loss_diversification_min_weight(weights, min_weight=min_weight)
 
     L = (
-        L_mean
+        float(mean_return_weight) * L_mean
+        + float(log_growth_weight) * L_log
         + lambda_cvar * L_cvar
         + lambda_turnover * L_turn
         + lambda_vol * L_vol
@@ -126,6 +143,7 @@ def combined_loss(
     )
     components = {
         "mean_return": -L_mean.item(),
+        "mean_log1p_return": float(torch.log1p(port_ret.clamp(min=-0.999999)).mean().item()),
         "cvar": cvar_val.item(),
         "turnover": L_turn.item(),
         "volatility": L_vol.item(),

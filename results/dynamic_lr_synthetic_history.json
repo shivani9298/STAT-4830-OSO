@@ -1,0 +1,55 @@
+{
+  "data_start": "2020-01-01",
+  "data_end": "2024-12-31",
+  "val_start": "2022-01-01",
+  "test_start": "2023-06-01",
+  "split": "embargo_train_val_test",
+  "synthetic": true,
+  "rolling_epochs": 3,
+  "sector_portfolios": false,
+  "config": {
+    "window_len": 126,
+    "epochs": 5,
+    "lr": 0.001,
+    "batch_size": 32,
+    "patience": 15,
+    "lambda_vol": 1.0,
+    "lambda_cvar": 1.0,
+    "hidden_size": 64,
+    "lr_schedule": "plateau",
+    "lr_decay": 0.5,
+    "plateau_patience": 4
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": -0.00036941978134564124,
+      "val_loss": 0.0002579446299932897,
+      "lr": 0.001
+    },
+    {
+      "epoch": 2,
+      "train_loss": -0.0004302230452594813,
+      "val_loss": 0.00026680040173232555,
+      "lr": 0.001
+    },
+    {
+      "epoch": 3,
+      "train_loss": -0.0004507936306981719,
+      "val_loss": 0.00027623966889223084,
+      "lr": 0.001
+    },
+    {
+      "epoch": 4,
+      "train_loss": -0.00047003933432279157,
+      "val_loss": 0.00028431219107005745,
+      "lr": 0.001
+    },
+    {
+      "epoch": 5,
+      "train_loss": -0.00047027657899889163,
+      "val_loss": 0.00029112602351233363,
+      "lr": 0.001
+    }
+  ]
+}
