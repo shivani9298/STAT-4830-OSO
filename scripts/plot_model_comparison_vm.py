@@ -4,7 +4,7 @@
 Reads training_history*.csv, ipo_optimizer_returns_{val,test}*.csv, weights, and
 selection_metrics*.json from an artifacts directory (e.g. copied VM output).
 
-Writes comparison figures under figures/ (default: figures/model_comparison_vm/), including
+Writes comparison figures under figures/old diagrams/ (default: figures/old diagrams/model_comparison_vm/), including
 test/val cumulative return overlays vs the 50/50 benchmark (linear scale).
 """
 from __future__ import annotations
@@ -366,7 +366,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--out-dir",
         type=Path,
-        default=ROOT / "figures" / "model_comparison_vm",
+        default=ROOT / "figures" / "old diagrams" / "model_comparison_vm",
         help="Output directory for PNGs",
     )
     p.add_argument("--rolling-window", type=int, default=21)

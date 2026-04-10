@@ -28,8 +28,8 @@ launch_model() {
   echo "$model started (pid=$pid) log=$log_file"
 }
 
-launch_model "gru" "run_ipo_optimizer_wrds_gru.py"
-launch_model "lstm" "run_ipo_optimizer_wrds_lstm.py"
-launch_model "transformer" "run_ipo_optimizer_wrds_transformer.py"
+launch_model "gru" "scripts/run_ipo_optimizer_wrds_gru.py"
+launch_model "lstm" "scripts/run_ipo_optimizer_wrds_lstm.py"
+launch_model "transformer" "scripts/run_ipo_optimizer_wrds_transformer.py"
 
 echo "All model trainings launched in background."

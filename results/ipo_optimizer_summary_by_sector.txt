@@ -1,35 +1,35 @@
-IPO Optimizer — Per-sector portfolios (market vs sector IPO basket)
+IPO Optimizer â€” Per-sector portfolios (market vs sector IPO basket)
 Each sector: separate softmax over [market, IPO basket]; shared RNN state.
 
 Sector: Unknown
-  Sharpe=1.10  MaxDD=-21.27%  AnnRet=19.11%  Avg IPO weight=5.94%
+  Sharpe=1.49  MaxDD=-22.03%  AnnRet=32.95%  Avg IPO weight=16.36%
 
 Sector: Health_Care
-  Sharpe=0.88  MaxDD=-19.75%  AnnRet=14.41%  Avg IPO weight=2.12%
+  Sharpe=1.28  MaxDD=-18.41%  AnnRet=23.81%  Avg IPO weight=8.86%
 
 Sector: Information_Technology
-  Sharpe=0.82  MaxDD=-20.23%  AnnRet=13.31%  Avg IPO weight=2.07%
+  Sharpe=0.95  MaxDD=-20.40%  AnnRet=17.22%  Avg IPO weight=6.81%
 
 Sector: Financials
-  Sharpe=0.73  MaxDD=-21.17%  AnnRet=11.59%  Avg IPO weight=1.35%
+  Sharpe=0.72  MaxDD=-21.22%  AnnRet=11.59%  Avg IPO weight=7.57%
 
 Sector: Consumer_Discretionary
-  Sharpe=0.74  MaxDD=-22.64%  AnnRet=12.16%  Avg IPO weight=4.25%
+  Sharpe=0.64  MaxDD=-34.51%  AnnRet=13.13%  Avg IPO weight=17.62%
 
 Sector: Industrials
-  Sharpe=1.03  MaxDD=-20.31%  AnnRet=17.99%  Avg IPO weight=6.87%
+  Sharpe=1.30  MaxDD=-21.40%  AnnRet=27.34%  Avg IPO weight=16.65%
 
 Sector: Energy
-  Sharpe=0.73  MaxDD=-21.38%  AnnRet=11.51%  Avg IPO weight=0.75%
+  Sharpe=0.72  MaxDD=-21.95%  AnnRet=11.26%  Avg IPO weight=3.19%
 
 Sector: Communication_Services
-  Sharpe=0.70  MaxDD=-22.20%  AnnRet=10.89%  Avg IPO weight=0.74%
+  Sharpe=0.54  MaxDD=-26.24%  AnnRet=8.17%  Avg IPO weight=3.61%
 
 Sector: Real_Estate
-  Sharpe=0.74  MaxDD=-21.93%  AnnRet=11.59%  Avg IPO weight=3.60%
+  Sharpe=0.69  MaxDD=-22.96%  AnnRet=11.37%  Avg IPO weight=8.78%
 
 Sector: Consumer_Staples
-  Sharpe=0.60  MaxDD=-23.78%  AnnRet=9.55%  Avg IPO weight=5.66%
+  Sharpe=0.40  MaxDD=-29.46%  AnnRet=6.39%  Avg IPO weight=13.31%
 
 Sector: Materials
-  Sharpe=0.47  MaxDD=-23.30%  AnnRet=7.09%  Avg IPO weight=7.71%
+  Sharpe=-0.01  MaxDD=-42.18%  AnnRet=-4.26%  Avg IPO weight=24.60%

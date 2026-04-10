@@ -17,7 +17,7 @@ Requires ``WRDS_USERNAME`` and ``WRDS_PASSWORD`` in ``.env`` (or env) so the con
 
 Outputs:
   results/dynamic_lr_wrds_history.json
-  figures/dynamic_lr_wrds_loss.png
+  figures/old diagrams/dynamic_lr_wrds_loss.png
 """
 from __future__ import annotations
 
@@ -234,9 +234,9 @@ def main() -> int:
     va_r = _roll(va, rw)
 
     out_dir = ROOT / "results"
-    fig_dir = ROOT / "figures"
+    fig_dir = ROOT / "figures" / "old diagrams"
     out_dir.mkdir(exist_ok=True)
-    fig_dir.mkdir(exist_ok=True)
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
     tag = "dynamic_lr_synthetic" if args.synthetic else "dynamic_lr_wrds"
     hist_path = out_dir / f"{tag}_history.json"

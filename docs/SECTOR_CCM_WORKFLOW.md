@@ -45,7 +45,7 @@ python scripts/generate_sector_cache_ccm.py --refresh
 
 ```bash
 set IPO_SECTOR_SOURCE=ccm
-python run_ipo_optimizer_wrds.py
+python scripts/run_ipo_optimizer_wrds.py
 ```
 
 (PowerShell: `$env:IPO_SECTOR_SOURCE = "ccm"`)

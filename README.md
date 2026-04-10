@@ -68,7 +68,7 @@ pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplotli
 ### 2. Run the Optimizer
 
 ```bash
-python run_ipo_optimizer_wrds.py
+python scripts/run_ipo_optimizer_wrds.py
 ```
 
 This script:
@@ -77,17 +77,17 @@ This script:
 2. Builds the IPO index and market returns
 3. Trains the GRU allocator with the best hyperparameters (or defaults)
 4. Exports weights to `results/ipo_optimizer_weights.csv` and a summary to `results/ipo_optimizer_summary.txt`
-5. Saves a loss plot to `figures/ipo_optimizer_loss.png`
+5. Saves figures under `figures/ipo_optimizer/<model>/` (see `IPO_SAVE_LOSS_PLOTS` in `run_ipo_optimizer_wrds.py`)
 
 **Runtime**: ~2–3 minutes.
 
 ### 3. Hyperparameter Tuning (Optional)
 
 ```bash
-python tune_hyperparameters_wrds.py
+python notebooks/tune_hyperparameters_wrds.py
 ```
 
-Grid search over window length, volatility penalties, CVaR, etc. Saves the best config to `results/ipo_optimizer_best_config.json`; `run_ipo_optimizer_wrds.py` will use it on the next run.
+Grid search over window length, volatility penalties, CVaR, etc. Saves the best config to `results/ipo_optimizer_best_config.json`; `scripts/run_ipo_optimizer_wrds.py` will use it on the next run.
 
 **Runtime**: ~1–3 hours depending on grid size.
 
@@ -132,9 +132,11 @@ Step-by-step notebook with problem setup, implementation, and validation.
 ├── README.md                         # This file
 ├── report.md                         # Week 4 report (problem, approach, results)
 ├── self_critique.md                 # OODA self-assessment
-├── run_ipo_optimizer_wrds.py        # Main run script (WRDS)
-├── tune_hyperparameters_wrds.py    # Hyperparameter grid search
+├── scripts/
+│   ├── run_ipo_optimizer_wrds.py   # Main run script (WRDS)
+│   └── ...                         # Other CLI utilities
 ├── notebooks/
+│   ├── tune_hyperparameters_wrds.py  # Hyperparameter grid search
 │   ├── week4_implementation.ipynb   # Main notebook
 │   ├── ipo_optimizer_2025_wrds.ipynb
 │   └── test_wrds.ipynb

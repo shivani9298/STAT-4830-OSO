@@ -12,7 +12,7 @@ Usage (repo root)::
 
   python scripts/TRANSFORMER_plot_sector_triplet_losses.py
 
-  python scripts/TRANSFORMER_plot_sector_triplet_losses.py --out figures/transformer_sector_runs/triplet_loss.png
+  python scripts/TRANSFORMER_plot_sector_triplet_losses.py --out "figures/old diagrams/transformer_sector_runs/triplet_loss.png"
 """
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def main() -> int:
     p.add_argument(
         "--out",
         type=Path,
-        default=ROOT / "figures" / "transformer_sector_runs" / "triplet_train_val_loss.png",
+        default=ROOT / "figures" / "old diagrams" / "transformer_sector_runs" / "triplet_train_val_loss.png",
     )
     p.add_argument("--dpi", type=int, default=150)
     args = p.parse_args()

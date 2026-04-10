@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from run_ipo_optimizer_wrds import (  # noqa: E402
@@ -186,8 +186,8 @@ def main() -> int:
     )
     print(f"[MULTI] Trained for {len(history)} epochs")
 
-    fig_dir = ROOT / "figures"
-    fig_dir.mkdir(exist_ok=True)
+    fig_dir = ROOT / "figures" / "old diagrams"
+    fig_dir.mkdir(parents=True, exist_ok=True)
     _plot_losses(history, fig_dir)
     print(f"Saved loss plots to {fig_dir / FIG_LOSS} and {fig_dir / FIG_LOSS_SEMILOG}")
 

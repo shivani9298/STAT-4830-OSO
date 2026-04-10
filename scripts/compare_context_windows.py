@@ -172,8 +172,8 @@ def main():
         )
 
     # ── PLOT 1: Sharpe & Return vs. window length ────────────────────────────
-    fig_dir = ROOT / "figures"
-    fig_dir.mkdir(exist_ok=True)
+    fig_dir = ROOT / "figures" / "old diagrams"
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
     wls = sorted(results.keys())
     sharpes = [results[w]["stats"]["sharpe_annualized"] for w in wls]
@@ -234,7 +234,7 @@ def main():
     fig.tight_layout()
     fig.savefig(fig_dir / "context_window_comparison.png", dpi=150)
     plt.close(fig)
-    print(f"\nSaved: figures/context_window_comparison.png")
+    print(f"\nSaved: figures/old diagrams/context_window_comparison.png")
 
     # ── PLOT 2: Cumulative returns per window length ─────────────────────────
     fig2, ax2 = plt.subplots(figsize=(12, 6))
@@ -266,7 +266,7 @@ def main():
     fig2.tight_layout()
     fig2.savefig(fig_dir / "context_window_cumulative.png", dpi=150)
     plt.close(fig2)
-    print(f"Saved: figures/context_window_cumulative.png")
+    print(f"Saved: figures/old diagrams/context_window_cumulative.png")
 
     # ── PLOT 3: Rolling 21-day Sharpe by window length ───────────────────────
     ROLL = 21
@@ -293,7 +293,7 @@ def main():
     fig3.tight_layout()
     fig3.savefig(fig_dir / "context_window_rolling_sharpe.png", dpi=150)
     plt.close(fig3)
-    print(f"Saved: figures/context_window_rolling_sharpe.png")
+    print(f"Saved: figures/old diagrams/context_window_rolling_sharpe.png")
 
     # ── PLOT 4: Training loss convergence by window length ───────────────────
     fig4, (ax4a, ax4b) = plt.subplots(1, 2, figsize=(13, 5))
@@ -323,7 +323,7 @@ def main():
     fig4.tight_layout()
     fig4.savefig(fig_dir / "context_window_loss_convergence.png", dpi=150)
     plt.close(fig4)
-    print(f"Saved: figures/context_window_loss_convergence.png")
+    print(f"Saved: figures/old diagrams/context_window_loss_convergence.png")
 
     # ── Save results CSV ─────────────────────────────────────────────────────
     rows = []

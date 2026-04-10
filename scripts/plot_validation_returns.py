@@ -14,8 +14,8 @@ import matplotlib.dates as mdates
 
 ROOT = Path(__file__).resolve().parent.parent
 results = ROOT / "results"
-figures = ROOT / "figures"
-figures.mkdir(exist_ok=True)
+figures = ROOT / "figures" / "old diagrams"
+figures.mkdir(parents=True, exist_ok=True)
 
 # --- Load data ---
 weights = pd.read_csv(results / "ipo_optimizer_weights.csv", index_col="date", parse_dates=True)

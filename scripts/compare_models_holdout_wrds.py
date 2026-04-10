@@ -13,7 +13,7 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parent.parent
-RUNNER = ROOT / "run_ipo_optimizer_wrds.py"
+RUNNER = ROOT / "scripts" / "run_ipo_optimizer_wrds.py"
 
 
 def suffix_for_model(model: str) -> str:
@@ -151,8 +151,8 @@ def _load_outputs(model: str) -> dict:
 
 
 def _plot_overlays(outputs: dict[str, dict], rolling_window: int) -> None:
-    fig_dir = ROOT / "figures"
-    fig_dir.mkdir(exist_ok=True)
+    fig_dir = ROOT / "figures" / "old diagrams"
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
     # Test cumulative excess vs 50/50 overlay.
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -257,7 +257,7 @@ def main() -> int:
     print(table.to_string(index=False))
     print(f"\nSaved table to {table_csv}")
     print(f"Saved markdown to {table_md}")
-    print("Saved plots to figures/model_comparison_*")
+    print("Saved plots to figures/old diagrams/model_comparison_*")
     return 0
 
 

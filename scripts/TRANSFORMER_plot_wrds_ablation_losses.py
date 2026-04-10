@@ -9,7 +9,7 @@ JSON only has best_val_loss / test_loss.
 Usage:
   python scripts/TRANSFORMER_plot_wrds_ablation_losses.py
   python scripts/TRANSFORMER_plot_wrds_ablation_losses.py --json results/wrds_transformer_ablation_2020_2024.json
-  python scripts/TRANSFORMER_plot_wrds_ablation_losses.py --out-dir figures/wrds_ablation_loss
+  python scripts/TRANSFORMER_plot_wrds_ablation_losses.py --out-dir "figures/old diagrams/wrds_ablation_loss"
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def main() -> int:
     p.add_argument(
         "--out-dir",
         type=Path,
-        default=ROOT / "figures" / "wrds_ablation_loss",
+        default=ROOT / "figures" / "old diagrams" / "wrds_ablation_loss",
         help="Directory for combined grid + per-run PNGs",
     )
     p.add_argument("--dpi", type=int, default=150)

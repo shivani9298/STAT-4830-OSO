@@ -11,16 +11,18 @@ or via env ``IPO_MODEL_TYPE=transformer``. When ``model_type`` is ``transformer`
 Set ``IPO_LOCAL_CONFIG`` to a path (repo-relative or absolute) to use a different JSON file
 for the same merge (e.g. run several transformer variants in sequence).
 Set ``IPO_EXPORT_ATTENTION=1`` to save self-attention maps (``results/ipo_optimizer_attention.npz`` and
-``figures/ipo_optimizer_attention_layer0.png``) when ``model_type`` is ``transformer``.
+``figures/ipo_optimizer/<model>/attention_layer0.png``) when ``model_type`` is ``transformer``.
+Set ``IPO_SAVE_LOSS_PLOTS=1`` to also write rolling and semilogy loss figures under ``figures/ipo_optimizer/<model>/``.
 Set ``IPO_LR_SCHEDULE`` to override JSON: ``constant``, ``cosine``, ``plateau`` (validation-driven reductions),
 or ``exponential`` (see ``lr_schedule`` / ``lr_decay`` in ``best_config`` or ``DEFAULTS``).
 Set ``IPO_SECTOR_PORTFOLIOS=0`` for a single market-vs-IPO index (overrides ``SECTOR_PORTFOLIOS``).
 Set ``IPO_DATA_START`` / ``IPO_DATA_END`` (e.g. ``2015-01-01`` / ``2024-12-31``) to override the default
 sample range (otherwise ``START_DATE`` / ``END_DATE`` below).
-Set ``IPO_LOSS_ROLLING_EPOCHS`` (default ``3``) for the rolling mean window in
-``figures/ipo_optimizer_loss_train_val_rolling.png``.
-Saves ``figures/ipo_optimizer_returns_vs_equal_weight_val.png``: cumulative growth of $1 for the
+Set ``IPO_LOSS_ROLLING_EPOCHS`` (default ``3``) for the rolling mean window when ``IPO_SAVE_LOSS_PLOTS=1``.
+Saves ``figures/ipo_optimizer/<model>/validation_returns_vs_equal_weight.png``: cumulative growth of $1 for the
 learned allocator vs fixed 50/50 market/IPO on **validation** windows (sector mode: mean across sleeves).
+Training history is written to ``results/ipo_optimizer_training_history.json`` (latest run) and
+``results/ipo_optimizer_training_history_<model>.json``.
 Set ``IPO_SECTOR_SOURCE`` to ``yfinance`` (Yahoo ``info['sector']``), ``compustat`` (default:
 Compustat GICS via ``comp.funda``/``comp.company`` join on ticker), or ``ccm`` / ``wrds_chain``
 (date-valid chain: ``match_date`` = max(ipo_date, first CRSP price date) → ``stocknames`` /
@@ -46,7 +48,7 @@ from pathlib import Path
 if sys.platform == "win32":
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 try:
@@ -468,7 +470,23 @@ def prepare_data(
     return {"df": df, "feature_cols": feature_cols, "sector_portfolios": False}
 
 
+def _apply_cli_model_override() -> None:
+    """
+    ``run_ipo_optimizer_wrds_{lstm,gru,transformer}.py`` insert ``--model <name>``.
+    ``load_best_config()`` reads ``IPO_MODEL_TYPE``; set it when CLI requests a model.
+    """
+    argv = sys.argv[1:]
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--model" and i + 1 < len(argv):
+            os.environ["IPO_MODEL_TYPE"] = argv[i + 1].strip().lower()
+            i += 2
+            continue
+        i += 1
+
+
 def main():
+    _apply_cli_model_override()
     print("Connecting to WRDS...")
     conn = get_connection()
     print("Connected.")
@@ -598,33 +616,43 @@ def main():
 
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
+    model_tag = str(cfg.get("model_type", "gru")).strip().lower() or "gru"
+    slim_hist = slim_history_for_json(history)
     hist_path = out_dir / "ipo_optimizer_training_history.json"
-    with open(hist_path, "w", encoding="utf-8") as f:
-        json.dump(slim_history_for_json(history), f, indent=2)
-    print(f"Saved training history to {hist_path}")
+    hist_tagged = out_dir / f"ipo_optimizer_training_history_{model_tag}.json"
+    for hp in (hist_path, hist_tagged):
+        with open(hp, "w", encoding="utf-8") as f:
+            json.dump(slim_hist, f, indent=2)
+    print(f"Saved training history to {hist_path} and {hist_tagged}")
 
-    fig_dir = ROOT / "figures"
-    fig_dir.mkdir(exist_ok=True)
-    title_base = "IPO Optimizer: Training and Validation Loss"
-    if use_sectors:
-        title_base += f" ({len(sector_labels)} sector heads)"
-    roll_w = int(os.environ.get("IPO_LOSS_ROLLING_EPOCHS", "3").strip() or "3")
-    roll_w = max(1, roll_w)
-    rolling_path = plot_train_val_rolling_and_test(
-        history,
-        fig_dir / "ipo_optimizer_loss_train_val_rolling.png",
-        test_loss=None,
-        rolling_epochs=roll_w,
-        title=f"{title_base} — rolling mean over {roll_w} epochs",
+    fig_dir = ROOT / "figures" / "ipo_optimizer" / model_tag
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    save_loss_plots = os.environ.get("IPO_SAVE_LOSS_PLOTS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
     )
-    print(f"Saved rolling train/val loss plot to {rolling_path}")
-    semilogy_path = plot_training_loss(
-        history,
-        fig_dir / "ipo_optimizer_loss.png",
-        title=title_base,
-        semilogy=True,
-    )
-    print(f"Saved semilogy loss plot to {semilogy_path}")
+    if save_loss_plots:
+        title_base = "IPO Optimizer: Training and Validation Loss"
+        if use_sectors:
+            title_base += f" ({len(sector_labels)} sector heads)"
+        roll_w = int(os.environ.get("IPO_LOSS_ROLLING_EPOCHS", "3").strip() or "3")
+        roll_w = max(1, roll_w)
+        rolling_path = plot_train_val_rolling_and_test(
+            history,
+            fig_dir / "loss_train_val_rolling.png",
+            test_loss=None,
+            rolling_epochs=roll_w,
+            title=f"{title_base} — rolling mean over {roll_w} epochs",
+        )
+        print(f"Saved rolling train/val loss plot to {rolling_path}")
+        semilogy_path = plot_training_loss(
+            history,
+            fig_dir / "loss_semilogy.png",
+            title=title_base,
+            semilogy=True,
+        )
+        print(f"Saved semilogy loss plot to {semilogy_path}")
 
     if os.environ.get("IPO_EXPORT_ATTENTION", "").strip().lower() in ("1", "true", "yes"):
         if cfg.get("model_type") == "transformer":
@@ -642,16 +670,15 @@ def main():
                     meta={"window_len": str(cfg["window_len"]), "batch": str(n)},
                 )
                 if maps:
+                    att_dir = ROOT / "figures" / "ipo_optimizer" / model_tag
+                    att_dir.mkdir(parents=True, exist_ok=True)
+                    png_path = att_dir / "attention_layer0.png"
                     save_attention_heatmap_png(
                         maps[0],
-                        ROOT / "figures" / "ipo_optimizer_attention_layer0.png",
+                        png_path,
                         title="Layer 0 self-attention (mean over batch)",
                     )
-                print(
-                    f"[IPO] Saved attention to {ap} and "
-                    f"{ROOT / 'figures' / 'ipo_optimizer_attention_layer0.png'}",
-                    flush=True,
-                )
+                    print(f"[IPO] Saved attention to {ap} and {png_path}", flush=True)
 
     if use_sectors:
         weights = predict_sector_head_weights(model, data["X_val"], device)
@@ -694,7 +721,7 @@ def main():
         weights,
         data["R_val"],
         data["dates_val"],
-        fig_dir / "ipo_optimizer_returns_vs_equal_weight_val.png",
+        fig_dir / "validation_returns_vs_equal_weight.png",
         title=cmp_title,
     )
     print(f"Saved returns vs 50/50 plot to {cmp_path}")

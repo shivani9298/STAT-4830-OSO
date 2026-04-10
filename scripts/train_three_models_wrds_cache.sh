@@ -69,6 +69,7 @@ from pathlib import Path
 
 ROOT = Path(os.environ["ROOT_DIR_EXPORT"])
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 os.chdir(ROOT)
 from run_ipo_optimizer_wrds import DEFAULTS, load_best_config
 
@@ -86,7 +87,7 @@ for model in gru lstm transformer; do
   log="$LOG_DIR/train_${model}_cache_${TS}.log"
   echo ""
   echo "=== START $model $(date -u +"%Y-%m-%dT%H:%M:%SZ") log=$log ==="
-  "$PYTHON" -u run_ipo_optimizer_wrds.py \
+  "$PYTHON" -u scripts/run_ipo_optimizer_wrds.py \
     --use-cache \
     --cache-dir "$CACHE_DIR" \
     --model "$model" \
@@ -95,4 +96,4 @@ done
 
 echo ""
 echo "Done. Artifacts under results/ (*_lstm / *_transformer suffixes; GRU unsuffixed)."
-echo "Compare plots: python scripts/plot_model_comparison_vm.py --artifacts-dir . --out-dir figures/model_comparison_fresh"
+echo "Compare plots: python scripts/plot_model_comparison_vm.py --artifacts-dir . --out-dir \"figures/old diagrams/model_comparison_fresh\""

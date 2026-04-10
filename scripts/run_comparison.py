@@ -10,8 +10,8 @@ Compares 5 model architectures on real IPO data:
   5. PolicyParams                 (rule-based heuristic, no training)
 
 Usage:
-    python3 run_comparison.py
-    python3 run_comparison.py --max_index_ipos 15 --no_gru
+    python3 scripts/run_comparison.py
+    python3 scripts/run_comparison.py --max_index_ipos 15 --no_gru
 """
 
 import argparse
@@ -24,10 +24,13 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO_ROOT))
+
 # ─────────────────────────────────────────────────────────────
 # Config defaults
 # ─────────────────────────────────────────────────────────────
-WRDS_CSV        = "src/dailyhistorical_21-26.csv"
+WRDS_CSV        = str(_REPO_ROOT / "src/dailyhistorical_21-26.csv")
 MAX_INDEX_IPOS  = 20          # IPOs fetched with shares_outstanding (Models 1-3)
 MAX_EPISODE_IPOS = 50         # IPOs used for episode-based models (4-5)
 N_EPISODE       = 21          # episode length (trading days after IPO)
@@ -37,7 +40,7 @@ GRU_WINDOW      = 21
 REINFORCE_EPOCHS = 30
 REINFORCE_BATCH  = 16
 RISK_FREE        = 0.04
-RESULTS_DIR      = Path("results")
+RESULTS_DIR      = _REPO_ROOT / "results"
 
 SPLITS = {
     "train": ("2021-01-01", "2021-12-31"),

@@ -15,7 +15,7 @@ and definition as ``run_training`` / checkpointing). Test-set Sharpe is reported
 Uses ``lr_schedule=plateau`` by default (``ReduceLROnPlateau``): learning rate is reduced by factor
 ``lr_decay`` when validation loss does not improve for ``plateau_patience`` epochs.
 Saves best config to ``results/ipo_optimizer_best_config.json``, rolling train/val/test loss plot to
-``results/ipo_optimizer_tune_loss_train_val_test.png`` (and a copy under ``figures/``), and
+``results/ipo_optimizer_tune_loss_train_val_test.png`` (and a copy under ``figures/old diagrams/``), and
 ``results/ipo_optimizer_tune_best_history.json``.
 
 **Environment (optional)**
@@ -40,6 +40,7 @@ from itertools import product
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 try:
     from dotenv import load_dotenv
@@ -390,8 +391,8 @@ def main():
             title=f"Train / val loss (rolling) + test — {data_start} to {data_end}",
         )
         print(f"Saved loss figure to {fig_path}", flush=True)
-        fig_dir = ROOT / "figures"
-        fig_dir.mkdir(exist_ok=True)
+        fig_dir = ROOT / "figures" / "old diagrams"
+        fig_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy(fig_path, fig_dir / fig_path.name)
         print(f"Copied to {fig_dir / fig_path.name}", flush=True)
         hist_json = out_dir / "ipo_optimizer_tune_best_history.json"

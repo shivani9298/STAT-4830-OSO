@@ -14,7 +14,7 @@ from pptx.enum.text import PP_ALIGN
 ROOT = Path(__file__).resolve().parent.parent
 PPTX_IN  = ROOT / "docs" / "IPO Portfolio Optimization GRU Allocation.pptx"
 PPTX_OUT = ROOT / "docs" / "IPO Portfolio Optimization GRU Allocation.pptx"
-FIGS     = ROOT / "figures"
+FIGS     = ROOT / "figures" / "old diagrams"
 
 # Brand colours matching the deck
 BLUE   = RGBColor(0x00, 0x66, 0xCC)

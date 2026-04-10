@@ -107,8 +107,8 @@ def main():
         all_stats[wl] = stats
         print(f"  → {len(history)} epochs, Sharpe={stats['sharpe_annualized']:.2f}")
 
-    fig_dir = ROOT / "figures"
-    fig_dir.mkdir(exist_ok=True)
+    fig_dir = ROOT / "figures" / "old diagrams"
+    fig_dir.mkdir(parents=True, exist_ok=True)
     colors = {42: "#1f77b4", 63: "#ff7f0e", 84: "#2ca02c", 126: "#d62728", 252: "#9467bd"}
 
     # ── FIGURE 1: per-window loss subplots ────────────────────────────────────
@@ -140,7 +140,7 @@ def main():
     fig1.tight_layout()
     fig1.savefig(fig_dir / "context_window_loss_per_window.png", dpi=150)
     plt.close(fig1)
-    print(f"\nSaved: figures/context_window_loss_per_window.png")
+    print(f"\nSaved: figures/old diagrams/context_window_loss_per_window.png")
 
     # ── FIGURE 2: overlaid train & val loss ──────────────────────────────────
     fig2, (ax_t, ax_v) = plt.subplots(1, 2, figsize=(14, 5))
@@ -164,7 +164,7 @@ def main():
     fig2.tight_layout()
     fig2.savefig(fig_dir / "context_window_loss_overlay.png", dpi=150)
     plt.close(fig2)
-    print(f"Saved: figures/context_window_loss_overlay.png")
+    print(f"Saved: figures/old diagrams/context_window_loss_overlay.png")
 
     # ── FIGURE 3: component breakdown (val) across windows ───────────────────
     comp_keys = [
@@ -196,7 +196,7 @@ def main():
     fig3.tight_layout()
     fig3.savefig(fig_dir / "context_window_loss_components.png", dpi=150)
     plt.close(fig3)
-    print(f"Saved: figures/context_window_loss_components.png")
+    print(f"Saved: figures/old diagrams/context_window_loss_components.png")
 
     # ── FIGURE 4: final-epoch component bar chart ────────────────────────────
     bar_keys = ["val_mean_return", "val_volatility", "val_cvar", "val_vol_excess"]
@@ -225,9 +225,9 @@ def main():
     fig4.tight_layout()
     fig4.savefig(fig_dir / "context_window_loss_final_bars.png", dpi=150)
     plt.close(fig4)
-    print(f"Saved: figures/context_window_loss_final_bars.png")
+    print(f"Saved: figures/old diagrams/context_window_loss_final_bars.png")
 
-    print("\nDone — 4 figures saved to figures/")
+    print("\nDone — 4 figures saved to figures/old diagrams/")
 
 
 if __name__ == "__main__":

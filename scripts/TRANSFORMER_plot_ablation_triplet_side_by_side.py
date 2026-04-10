@@ -38,7 +38,7 @@ def main() -> int:
     p.add_argument(
         "--out",
         type=Path,
-        default=ROOT / "figures" / "wrds_ablation_loss" / "ablation_triplet_batch_32_hidden_64_lambda_vol.png",
+        default=ROOT / "figures" / "old diagrams" / "wrds_ablation_loss" / "ablation_triplet_batch_32_hidden_64_lambda_vol.png",
     )
     p.add_argument("--dpi", type=int, default=150)
     args = p.parse_args()

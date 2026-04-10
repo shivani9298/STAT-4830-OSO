@@ -16,7 +16,7 @@ Environment (optional):
 
 Outputs are copied after each run to:
   results/transformer_sector_runs/<run_id>/
-  figures/transformer_sector_runs/<run_id>/
+  figures/old diagrams/transformer_sector_runs/<run_id>/
 
 Each run also saves ``results/ipo_optimizer_training_history.json`` (slim epoch losses);
 that file is copied per run. Plot all three side-by-side::
@@ -53,15 +53,15 @@ RUNS: list[tuple[str, str]] = [
 
 def _copy_outputs(run_id: str) -> None:
     res_dst = ROOT / "results" / "transformer_sector_runs" / run_id
-    fig_dst = ROOT / "figures" / "transformer_sector_runs" / run_id
+    fig_dst = ROOT / "figures" / "old diagrams" / "transformer_sector_runs" / run_id
     res_dst.mkdir(parents=True, exist_ok=True)
     fig_dst.mkdir(parents=True, exist_ok=True)
 
-    loss_png = ROOT / "figures" / "ipo_optimizer_loss.png"
+    loss_png = ROOT / "figures" / "ipo_optimizer" / "transformer" / "loss_semilogy.png"
     if loss_png.exists():
-        shutil.copy2(loss_png, fig_dst / "ipo_optimizer_loss.png")
+        shutil.copy2(loss_png, fig_dst / "ipo_optimizer_loss_semilogy.png")
 
-    attn = ROOT / "figures" / "ipo_optimizer_attention_layer0.png"
+    attn = ROOT / "figures" / "ipo_optimizer" / "transformer" / "attention_layer0.png"
     if attn.exists():
         shutil.copy2(attn, fig_dst / "ipo_optimizer_attention_layer0.png")
 
@@ -98,7 +98,7 @@ def main() -> int:
     os.environ.setdefault("IPO_EXPORT_ATTENTION", "1")
 
     py = sys.executable
-    main_script = ROOT / "run_ipo_optimizer_wrds.py"
+    main_script = ROOT / "scripts" / "run_ipo_optimizer_wrds.py"
 
     for run_id, rel_cfg in RUNS:
         cfg_path = ROOT / rel_cfg

@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 ROOT = Path(__file__).resolve().parent.parent
+(ROOT / "figures" / "old diagrams").mkdir(parents=True, exist_ok=True)
 
 # ── load data ──────────────────────────────────────────────────────────────────
 weights = pd.read_csv(
@@ -68,9 +69,9 @@ ax1.set_title("Cumulative Returns — Validation Period (2024-01-31 to 2024-12-3
 ax1.legend(loc="upper left", fontsize=9)
 ax1.grid(True, alpha=0.3)
 fig1.tight_layout()
-fig1.savefig(ROOT / "figures" / "validation_cumulative_returns.png", dpi=150)
+fig1.savefig(ROOT / "figures" / "old diagrams" / "validation_cumulative_returns.png", dpi=150)
 plt.close(fig1)
-print("Saved: figures/validation_cumulative_returns.png")
+print("Saved: figures/old diagrams/validation_cumulative_returns.png")
 
 # ── PLOT 2: rolling optimization objective ────────────────────────────────────
 # Best config lambdas
@@ -152,9 +153,9 @@ axes2[-1].xaxis.set_major_formatter(mdates.DateFormatter("%b '%y"))
 axes2[-1].xaxis.set_major_locator(mdates.MonthLocator(interval=2))
 fig2.autofmt_xdate()
 fig2.tight_layout()
-fig2.savefig(ROOT / "figures" / "validation_objective.png", dpi=150)
+fig2.savefig(ROOT / "figures" / "old diagrams" / "validation_objective.png", dpi=150)
 plt.close(fig2)
-print("Saved: figures/validation_objective.png")
+print("Saved: figures/old diagrams/validation_objective.png")
 
 # ── PLOT 3: rolling portfolio variance ────────────────────────────────────────
 roll_var_model  = pd.Series(model_ret,  index=dates).rolling(WINDOW).var() * 252
@@ -180,9 +181,9 @@ ax3.set_title(f"Rolling Portfolio Variance ({WINDOW}-day, annualized) — Valida
 ax3.legend(fontsize=9)
 ax3.grid(True, alpha=0.3)
 fig3.tight_layout()
-fig3.savefig(ROOT / "figures" / "validation_variance.png", dpi=150)
+fig3.savefig(ROOT / "figures" / "old diagrams" / "validation_variance.png", dpi=150)
 plt.close(fig3)
-print("Saved: figures/validation_variance.png")
+print("Saved: figures/old diagrams/validation_variance.png")
 
 # ── summary stats ─────────────────────────────────────────────────────────────
 print(f"\nValidation: {dates[0].date()} to {dates[-1].date()}  ({len(dates)} days)")

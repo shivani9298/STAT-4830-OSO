@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-RUNNER = ROOT / "run_ipo_optimizer_wrds.py"
+RUNNER = ROOT / "scripts" / "run_ipo_optimizer_wrds.py"
 
 
 def parse_args() -> argparse.Namespace:

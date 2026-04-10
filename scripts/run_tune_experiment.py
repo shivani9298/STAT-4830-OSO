@@ -9,7 +9,7 @@ Run ``notebooks/tune_hyperparameters_wrds.py`` with a chosen calendar sample and
 
 Sets ``IPO_TUNE_*`` env vars; see the tuning notebook docstring. Quick mode runs one grid config unless ``--full-grid``.
 
-Outputs: ``results/ipo_optimizer_best_config.json``, loss PNG + JSON history, copy under ``figures/``.
+Outputs: ``results/ipo_optimizer_best_config.json``, loss PNG + JSON history, copy under ``figures/old diagrams/``.
 """
 from __future__ import annotations
 
