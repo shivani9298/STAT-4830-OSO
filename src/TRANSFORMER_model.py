@@ -10,6 +10,15 @@ import torch
 import torch.nn as nn
 
 
+def _init_equal_weight_head(layer: nn.Module) -> None:
+    """
+    Initialize final linear layer to zero logits so softmax starts uniform.
+    """
+    if isinstance(layer, nn.Linear):
+        nn.init.zeros_(layer.weight)
+        nn.init.zeros_(layer.bias)
+
+
 class AttentionCapturingEncoderLayer(nn.TransformerEncoderLayer):
     """
     Like ``TransformerEncoderLayer`` but runs self-attention with ``need_weights=True``
@@ -71,6 +80,7 @@ class TransformerAllocator(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(d_model, n_assets),
         )
+        _init_equal_weight_head(self.mlp[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         _b, T, _f = x.shape
@@ -164,6 +174,8 @@ class SectorMultiHeadTransformerAllocator(nn.Module):
                 for _ in range(n_sectors)
             ]
         )
+        for head in self.heads:
+            _init_equal_weight_head(head[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T = x.size(1)

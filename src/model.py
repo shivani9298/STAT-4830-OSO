@@ -28,6 +28,15 @@ ModuleType = Union[
 ]
 
 
+def _init_equal_weight_head(layer: nn.Module) -> None:
+    """
+    Initialize final linear layer to zero logits so softmax starts uniform (e.g. 50/50).
+    """
+    if isinstance(layer, nn.Linear):
+        nn.init.zeros_(layer.weight)
+        nn.init.zeros_(layer.bias)
+
+
 class AllocatorNet(nn.Module):
     """
     GRU or LSTM → last hidden → MLP → softmax → weights.
@@ -69,6 +78,7 @@ class AllocatorNet(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_size, n_assets),
         )
+        _init_equal_weight_head(self.mlp[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out, _ = self.rnn(x)
@@ -110,6 +120,7 @@ class MLPAllocator(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_size, n_assets),
         )
+        _init_equal_weight_head(self.mlp[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.aggregate:
@@ -165,6 +176,7 @@ class HybridAllocator(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_size, n_assets),
         )
+        _init_equal_weight_head(self.head[-1])
 
     def _get_state_gru(self, x: torch.Tensor) -> torch.Tensor:
         out, _ = self.encoder(x)
@@ -238,6 +250,8 @@ class SectorMultiHeadAllocator(nn.Module):
                 for _ in range(n_sectors)
             ]
         )
+        for head in self.heads:
+            _init_equal_weight_head(head[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out, _ = self.rnn(x)

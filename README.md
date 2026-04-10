@@ -22,6 +22,7 @@ The model allocates ~16% to the IPO index on average, achieving **Sharpe 2.53** 
 ### Prerequisites
 
 - Python 3.10+
+- [**uv**](https://docs.astral.sh/uv/) (recommended) or `pip`
 - **WRDS account** (CRSP + SDC)
 - `WRDS_USERNAME` and `WRDS_PASSWORD` environment variables (or interactive login)
 
@@ -30,7 +31,38 @@ The model allocates ~16% to the IPO index on average, achieving **Sharpe 2.53** 
 ```bash
 git clone https://github.com/shivani9298/STAT-4830-OSO.git
 cd STAT-4830-OSO
-pip install torch numpy pandas matplotlib wrds
+```
+
+**Using uv (recommended, including VM/GPU)**
+
+Install uv if needed: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+```
+
+Install **PyTorch** for your CUDA build from the official index (pick the URL that matches your driver; examples below—see [pytorch.org](https://pytorch.org) for current wheels):
+
+```bash
+# Example: CUDA 12.4 wheels (adjust cu118/cu121/cu124/cpu per your VM)
+uv pip install torch --index-url https://download.pytorch.org/whl/cu124
+```
+
+WRDS-friendly stack (pandas/sqlalchemy pins that work with `wrds`):
+
+```bash
+uv pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplotlib numpy
+```
+
+**Using pip only**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+# Then install torch from pytorch.org, then:
+pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplotlib numpy
 ```
 
 ### 2. Run the Optimizer
