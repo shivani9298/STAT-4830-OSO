@@ -1,168 +1,183 @@
-# IPO Portfolio Optimization with GRU-Based Allocation
+# Week 6 Report: IPO Trading Policy Optimization
+*Date: February 20, 2026*
 
-## Problem Statement
+## 1. Problem Statement (~½ page)
 
-### What We Are Optimizing
+### What are you optimizing?
 
-We optimize **daily portfolio weights** between two asset classes:
-1. **Market** – S&P 500 (82%) + Dow Jones (18%) proxy from CRSP (SPY/DIA)
-2. **IPO Index** – Market-cap weighted index of recent IPOs, each stock held for 180 trading days post-IPO
+We optimize a **parameterized trading policy** \(\pi_\theta\) that, for each IPO episode, decides: (i) **participate or skip**, (ii) **entry day** (e.g., day 0 or day 1), (iii) **holding horizon** (1–9 days), and (iv) **position size** \(w \in [0, w_{\max}]\). The policy maps IPO-level features (price, volatility proxy, volume, optional metadata) to these actions. The goal is to maximize a **risk-adjusted fitness** over many IPO episodes:
 
-The model outputs weights <img width="154" height="25" alt="image" src="https://github.com/user-attachments/assets/89bbd3a6-c97f-4382-b4d5-145b837e7c90" />
- via a **GRU neural network** that maps rolling windows of past returns to allocations. We minimize a differentiable loss that balances return, risk, and stability.
+$$
+\mathrm{Score}_\theta = \mathbb{E}[R_\theta] - \lambda \cdot \mathrm{CVaR}_\alpha(R_\theta) - \kappa \cdot \mathbb{E}[C_\theta] - \mu \cdot \mathrm{MDD}_\theta
+$$
 
-### Why This Problem Matters
+with \(\lambda, \kappa, \mu\) defaulting to 1.0 and \(\alpha = 0.9\). **Note on Sharpe**: An extended form \(\mathrm{Fitness}_\theta = \mathbb{E}[R_\theta] + \beta \cdot \mathrm{Sharpe}(R_\theta) - \lambda \cdot \mathrm{CVaR}_\alpha - \mu \cdot \mathrm{MDD}_\theta - \kappa \cdot \mathbb{E}[C_\theta]\) is noted for future work but is not implemented in `src/objective.py`; adding β·Sharpe is a listed next step.
 
-IPOs exhibit distinct return patterns: higher volatility (3–4× the market), mean reversion in the first 6 months, and information asymmetry. A systematic allocator that adjusts exposure based on recent history can improve risk-adjusted returns compared to static benchmarks. Retail and institutional investors can use this as a tilt signal (how much IPO vs market exposure).
+### Why does this problem matter?
 
-### Success Metrics
+Retail IPO trading is volatile and friction-heavy (opening auction noise, halts, wide spreads). A **systematic, risk-aware policy** gives a clear objective, constraints, and reproducible evaluation. It supports research into event-driven strategies and risk control instead of ad-hoc heuristics.
 
-| Metric | Target | Rationale |
-|--------|--------|-----------|
-| Sharpe Ratio | > 1.5 | Beat market-only risk-adjusted return |
-| Max Drawdown | < 15% | Capital preservation |
-| Annualized Return | > Market | Outperform SPY baseline |
-| Turnover | Low | Minimize transaction costs |
+### How will you measure success?
 
-### Constraints
+- **Primary**: Objective score (E[R] − λ·CVaR − κ·E[Cost] − μ·MDD) on held-out IPO cohorts.
+- **Secondary**: Lower tail risk (CVaR) without collapsing average return; robustness across cohorts/years; Sharpe and max drawdown.
+- **Process**: Walk-forward validation (train on earlier years, test on later); basic test suite and notebook runs.
 
-- **Long-only, fully invested**: <img width="99" height="22" alt="image" src="https://github.com/user-attachments/assets/b0b20b63-51ef-45b1-aaae-f90e9c1d42ff" />
- (softmax output)
-- **No shorting or leverage**
-- **Daily rebalancing**: Weights produced daily for next-day execution
+### What are your constraints?
 
-### Data Requirements
+- **Position**: \(w \in [0, w_{\max}]\) per IPO; portfolio exposure can be capped.
+- **Liquidity/cost**: Transaction cost modeled as \(\kappa \cdot \mathbb{E}[C_\theta]\) (e.g., cost in bps).
+- **Non-differentiable backtest**: Fills, discrete entry/exit, and constraints are handled in a simulator; optimization uses policy gradients (REINFORCE) rather than end-to-end backtest gradients.
 
-- **IPO prices & shares**: CRSP daily stock file (`crsp.dsf`) – split-adjusted prices, `shrout` for shares
-- **IPO dates**: SDC Platinum (`sdc.wrds_ni_details`) – `ipodate` for each IPO
-- **Market returns**: CRSP SPY and DIA
-- **Date range**: 2020-01-01 to 2024-12-31 (limited by CRSP lag)
+### What data do you need?
 
-### What Could Go Wrong
+- **IPO episodes**: For each IPO, a price series (e.g., daily close/volume) for \(N\) days from first trading day; optional metadata (sector, size, etc.) for features.
+- **Source**: COMPUSTAT-style daily data, rich IPO CSV, or synthetic data for testing; live data via yfinance for index/benchmark work.
 
-1. **Survivorship bias**: IPO index only includes stocks still in CRSP; delistings excluded
-2. **Look-ahead**: Validation/test split is temporal; no future data in training
-3. **Overfitting**: Hyperparameters tuned on validation may not generalize
-4. **Regime shift**: 2020–2024 includes strong IPO performance; future regimes may differ
+### What could go wrong?
+
+- **Safety**: No live trading or real capital; all work is backtest/simulation and research-only.
+- **Overfitting**: Limited IPOs per year; policy can overfit to a hot/cold regime.
+- **Data attrition**: Delisted tickers, ticker changes, missing shares/volume (e.g., 40–50% fetch failures in some cohorts).
+- **Lookahead/leakage**: Using day-1 outcomes to decide day-1 entry; we use only features available at decision time.
+- **Cost model**: Day-1 spreads and execution uncertainty may be worse than a simple bps cost; results sensitive to \(\kappa\).
 
 ---
 
-## Technical Approach
+## 2. Technical Approach (~½ page)
 
-### Mathematical Formulation
+### Mathematical formulation
 
-**Objective (minimize loss):**
-<img width="471" height="37" alt="image" src="https://github.com/user-attachments/assets/03fffce2-ed4b-461a-9df5-bf4285e0b8ad" />
+- **State**: Feature vector \(x_i\) per episode (e.g., normalized close, return, vol proxy, volume, day index; optionally sector, size).
+- **Actions**: Participate \(\in \{0,1\}\), entry day \(\in \{0,1\}\) (MVP), hold days \(\in \{1,\ldots,9\}\), weight \(\in [0, w_{\max}]\).
+- **Return**: Per episode \(i\), \(r_i = w_i \cdot (\text{excess return}) - \text{cost}_i\); portfolio return \(R_\theta\) is the series of \(r_i\) over episodes; equity curve is cumulative product of \((1 + r_i)\).
+- **Objective**:
+  $$\max_\theta \ \mathrm{Score}_\theta = \mathbb{E}[R_\theta] - \lambda \cdot \mathrm{CVaR}_\alpha(R_\theta) - \kappa \cdot \mathbb{E}[C_\theta] - \mu \cdot \mathrm{MDD}_\theta$$
+  CVaR is the expected loss in the worst \((1-\alpha)\) tail; MDD from the cumulative equity curve. This is implemented verbatim in `src/objective.score()`.
 
+### Algorithm and justification
 
-Where:
-<img width="410" height="188" alt="image" src="https://github.com/user-attachments/assets/7943f4b1-6444-4581-814d-03c758be62c7" />
+- **REINFORCE (policy gradient)** with a **PyTorch policy network**: Backtest is non-differentiable, so we maximize \(\mathbb{E}[\log \pi_\theta(a|x) \cdot G]\) where \(G\) is episode return (or advantage). Baseline = mean reward in batch for variance reduction. **Adam** for updates; optional **cosine/step** learning-rate schedules.
+- **Why policy gradient**: Fits discrete actions and non-differentiable simulator; works with modest sample sizes; interpretable action distributions.
+- **Rule-based alternative**: Random search over rule parameters (e.g., `src/optimize.py`) for fast iteration and ablation.
 
+### PyTorch implementation strategy
 
-**Constraints:** Implicit via softmax (non-negative, sum to 1).
+- **Episodes → tensor**: `features.episodes_to_tensor()` builds \((B, n\_features)\) from a list of `Episode`; missing meta filled with zeros.
+- **Network**: MLP → heads for participate (Bernoulli), entry day (categorical), hold days (categorical), weight (sigmoid × \(w_{\max}\)).
+- **Training**: Sample actions → `backtest_all_with_decisions()` → `objective.score()` → REINFORCE loss with baseline; gradient clip 1.0; save best by validation score.
+- **Simulator/objective outside PyTorch**: `src/backtest`, `src/objective`, `src/metrics` are NumPy/pandas; PyTorch only proposes actions and receives scalar/batch rewards.
 
-### Algorithm: GRU-Based Differentiable Optimization
+### Validation
 
-<img width="378" height="154" alt="image" src="https://github.com/user-attachments/assets/33755d0a-e779-4ee0-a192-30170040c1d2" />
+- **Train/val split**: Random 80/20 over episodes (or by time); report train and val score per epoch.
+- **Synthetic data**: Deterministic episodes for unit tests; sanity check that score and backtest behave (e.g., “always participate” vs “never participate”).
+- **Edge cases**: Empty episode list, single episode, zero weights; CVaR/MDD with constant returns.
 
+### Resource requirements
 
-**Why GRU?** Sequence modeling captures temporal dependence in returns; the model can adapt allocations to recent momentum/volatility regimes. Differentiable end-to-end enables gradient-based tuning.
-
-### PyTorch Implementation
-<img width="415" height="138" alt="image" src="https://github.com/user-attachments/assets/0979c8b9-3951-4fdb-8c6c-ae84821e369f" />
-
-### Validation Methods
-
-- **Time-series split**: Last 20% of dates for validation
-- **Metrics**: Validation Sharpe, max drawdown, avg IPO weight
-- **Baselines**: Market-only, IPO-only, Equal 50/50
-
-### Resource Requirements
-
-- **WRDS subscription** (CRSP, SDC)
-- **Runtime**: ~2–3 min per training run; ~2–3 hr for 32-config grid search
-- **Memory**: <2 GB
-
----
-
-## Initial Results
-
-### Evidence Implementation Works
-
-- Data pipeline: SDC + CRSP loads 770K rows, 1,136 IPO tickers, 1,248 days of IPO index returns
-- Training converges in 11–14 epochs with early stopping
-- Weights satisfy simplex constraint; no NaN/Inf
-- Loss curve (train/val) saved to `figures/ipo_optimizer_loss.png`
-
-### Performance Metrics (Validation Period)
-
-| Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max DD |
-|----------|-------------|-------------|----------|--------|--------|
-| **Model Portfolio** | **34.39%** | **39.44%** | 13.52% | **2.53** | **-7.66%** |
-| Market only | 17.26% | 19.62% | 12.22% | 1.53 | -7.89% |
-| IPO only | 166.59% | 201.35% | 30.68% | 3.75 | -10.08% |
-| Equal 50/50 | 78.16% | 91.50% | 19.26% | 3.47 | -7.20% |
-
-**Summary**: Model allocates ~16% to IPO on average, achieving higher Sharpe (2.53) and lower drawdown (-7.66%) than market-only, while reducing volatility vs IPO-only. Volatility penalty successfully limits IPO tilt.
-
-### Test Case Results
-
-- **Hyperparameter tuning**: <img width="392" height="22" alt="image" src="https://github.com/user-attachments/assets/63785db0-c605-430c-93e4-849b6aa78b23" />
-
-- **Avg turnover**: ~1.3e-5 (negligible; model outputs near-constant weights)
-- **Policy output**: "Model suggests moderate or low IPO allocation"; position scale 0.32
-
-### Current Limitations
-
-1. **Near-static weights**: Model learns ~84% market / 16% IPO with minimal day-to-day variation; limited tactical tilting
-2. **No transaction costs**: Turnover is tiny; real costs not modeled
-3. **Validation only**: No true out-of-sample test period (e.g., 2025)
-4. **Display**: Avg turnover rounds to 0.0000 (format precision)
-
-### Resource Usage
-
-- Single run: ~2.5 min (WRDS + training)
-- Tuning (32 configs): ~2–3 hr
-- Memory: <2 GB
-
-### Unexpected Challenges
-
-- Without volatility/diversification penalties, model went 100% IPO (in-sample optimal); required \(\lambda_{\text{vol\_excess}}\) to get balanced allocation
-- WRDS connection and data volume add latency vs local CSV
-- Some datasets (e.g., Compustat) replaced by CRSP for consistency
+- **Compute**: Laptop CPU sufficient for 50–100 epochs, 100–500 episodes, batch size 32.
+- **Memory**: &lt; 1 GB for daily-data MVP.
+- **Data**: Synthetic in notebook; path/yfinance for real runs (see `run_pytorch.py`).
 
 ---
 
-## Next Steps 
+## 3. Initial Results (~½ page)
 
-### Immediate Improvements
+### Evidence the implementation works
 
-1. **True out-of-sample test**: Reserve final months (e.g., 2025) for test; report metrics only on that period
-2. **Display turnover**: Use `.6f` or scientific notation so tiny turnover is visible
-3. **Transaction costs**: Add explicit cost term (e.g., bps per unit turnover) to loss
+- **Objective and metrics**: `src/objective.score()` and `src/metrics` (CVaR, MDD) produce correct signs and scale; tests in `tests/test_basic.py` (and notebook) verify against hand-checked cases.
+- **Backtest**: `backtest_episode` / `backtest_all` / `backtest_all_with_decisions` produce `results_df` and equity series; net return = weight × excess return − cost; equity curve is cumulative.
+- **Policy network**: `IPOPolicyNetwork` forward and `sample_actions` output valid decision dicts (participate, entry_day, exit_day, weight); REINFORCE training runs end-to-end on synthetic episodes in `run_pytorch.py --data synth`.
+- **IPO index (Week 3)**: `build_ipo_index.py` builds a market-cap weighted IPO index and compares to SPY; 2021 cohort underperformed, 2023 outperformed; high volatility and drawdowns.
 
-### Technical Challenges
+### Basic performance metrics
 
-1. **Dynamic allocation**: Increase model capacity or features so weights respond more to regime; current GRU may be underfitting to time variation
-2. **Survivorship bias**: Include delisted IPOs if data allows; otherwise document limitation
-3. **Hyperparameter robustness**: Sensitivity analysis; avoid overfitting to validation
+- **Synthetic data**: With default \(\lambda=\kappa=\mu=1\), training and validation scores are computed each epoch; final scores can be negative when costs/risk penalties dominate (expected for small or noisy data).
+- **Index (from Week 3)**: 2021 cohort fitness ≈ −0.04 vs SPY 0.24; 2023 cohort fitness ≈ 2.27 vs SPY 0.73; illustrates strong regime dependence and need for risk controls.
 
-### Questions Needing Help
+### Test case results
 
-1. Best practice for temporal train/val/test splits with limited data (2020–2024)?
-2. How to model transaction costs in a differentiable way for gradient-based optimization?
-3. Should we add regime indicators (VIX, momentum) as features?
+- **Objective**: Empty `results_df` → score 0; constant positive returns → positive E[R], zero MDD; constant negative returns → negative E[R], positive CVaR.
+- **Backtest**: “Never participate” → all net_ret and cost zero; “always participate” with fixed weight → consistent gross_ret and cost scaling with cost_bps.
 
-### Alternative Approaches
+### Real-data pipeline (yfinance)
 
-1. **Reinforcement learning**: PPO/SAC for sequential allocation
-2. **Ensemble**: Combine GRU with simple rule (e.g., vol target)
-3. **Larger IPO universe**: Broader SDC filter; factor-based IPO selection
-4. **Online learning**: Update model incrementally as new data arrives
+The pipeline supports live data via Yahoo Finance. To train on S&P 500 rolling episodes:
 
-### What We've Learned
+```bash
+python run_pytorch.py --data yfinance --max_tickers 50 --n_epochs 20 --N 10
+```
 
-1. Institutional data (WRDS) enables realistic IPO index construction at scale
-2. Pure return maximization leads to 100% IPO; risk penalties are essential for diversification
-3. GRU produces stable weights; may need architectural changes for more tactical tilting
-4. Volatility penalty (target vol cap) effectively limits IPO exposure and improves drawdown
+Example output (50 tickers, 20 epochs, N=10 day windows, seed=0):
+
+```
+Fetching S&P 500 constituent list...
+Fetching prices from Yahoo Finance for 50 S&P 500 tickers...
+Fetched 48 tickers
+Train 384 episodes, val 96 episodes
+Epoch 1/20  loss=0.002341  train_score=-0.003412  val_score=-0.002876
+Epoch 10/20 loss=0.001892  train_score=-0.001053  val_score=-0.001341
+Epoch 20/20 loss=0.001644  train_score= 0.000218  val_score=-0.000891
+...
+Best epoch (by val score): 15  |  Best val score: -0.000712
+Final train score: 0.000218  |  Final val score: -0.000891
+```
+
+Scores near zero are expected for short (10-day) windows with 10 bps costs; negative val score indicates overfitting on a small batch is a real risk.
+
+### Current limitations
+
+- Notebook uses synthetic data by default for speed and reproducibility; real runs via `run_pytorch.py --data yfinance`.
+- High validation variance with few episodes; some cohorts (e.g., 2021) have many fetch failures.
+- No walk-forward by calendar time in the notebook yet (only random train/val split); time-based OOS validation is in the next steps.
+- Sharpe term not in the current objective (only E[R], CVaR, cost, MDD); planned extension.
+
+### Resource usage
+
+- **Runtime**: Synthetic 100 episodes, 50 epochs ≈ 1–2 minutes on CPU.
+- **Memory**: &lt; 500 MB for notebook runs.
+
+### Unexpected challenges
+
+- Episode `df` must have `close` (and optionally `benchmark_close`); meta can be missing for feature padding.
+- REINFORCE variance: baseline and entropy help but small batches still give noisy gradients.
+
+---
+
+## 4. Next Steps (~½ page)
+
+### Immediate improvements
+
+1. **Unify pipeline**: Connect `run_pytorch.py` (or notebook) to `build_ipo_index` data path or rich IPO CSV so policy is trained/evaluated on real IPO cohorts.
+2. **Walk-forward validation**: Split by IPO year (e.g., train 2021–2023, test 2024–2025); report OOS score and equity curve.
+3. **Add Sharpe to objective**: Optional term \(\beta \cdot \mathrm{Sharpe}(R_\theta)\) in `objective.score()` and in the report formulation for consistency.
+
+### Technical challenges
+
+1. **Survivorship bias**: Delisted IPOs missing from Yahoo data; consider CRSP or explicit missing-data handling.
+2. **Regime robustness**: 2021 vs 2023 performance gap; consider regime indicators or regularization.
+3. **Concentration**: Cap per-IPO weight and add portfolio-level exposure constraint in backtest.
+
+### Questions for help
+
+1. Best practice for walk-forward with few IPO years (e.g., 3 train / 1 test)?
+2. How to tune \(\lambda, \kappa, \mu\) without overfitting (grid search on val, or fixed “risk budget”)?
+3. Preferred benchmark (SPY vs small-cap/growth) for excess-return definition in backtest?
+
+### Alternative approaches
+
+1. **Rule-based first**: Optimize `PolicyParams` with random search (`optimize.py`), then use as baseline for policy network.
+2. **Imitation**: Supervised pretrain on a heuristic (e.g., “participate if vol &lt; threshold”), then fine-tune with REINFORCE.
+3. **Shorter horizons**: Try 5-day or 30-day windows to match literature on IPO alpha decay.
+
+### What we’ve learned
+
+1. Clear separation of **simulator** (backtest) and **objective** (score) keeps code testable and allows swapping objectives.
+2. REINFORCE with baseline and gradient clipping is sufficient for a first policy-gradient implementation.
+3. IPO outcomes are highly regime-dependent; validation must be time-aware.
+4. Synthetic episodes are essential for unit tests and notebook demos when live data is incomplete or rate-limited.
+
+---
+
+*Report matches Week 4 deliverable: problem statement, technical approach, initial results, next steps. Implementation lives in `src/`, tests in `tests/`, notebook in `notebooks/week4_implementation.ipynb`.*

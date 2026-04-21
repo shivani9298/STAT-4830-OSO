@@ -1,231 +1,92 @@
 #!/usr/bin/env python3
 """
-Run IPO Portfolio Optimizer on 2005-01-01 to 2024-12-31 (see START_DATE / END_DATE).
+Run IPO Portfolio Optimizer on 2020-01-01 to 2025-12-31.
 IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices (split-adjusted).
 Market: Market-cap weighted portfolio of S&P 500 (SPY) and Dow Jones (DIA) from CRSP.
 Uses best config from results/ipo_optimizer_best_config.json if present (from tune_hyperparameters_wrds.py).
-Set ``model_type`` to ``transformer`` in ``best_config``, in gitignored ``local/ipo_optimizer_config.json``,
-or via env ``IPO_MODEL_TYPE=transformer``. When ``model_type`` is ``transformer``, ``TRANSFORMER_CONFIG``
-(lr, batch_size, lambda_cvar, hidden_size, weight_decay, dropout, cosine_lr) is merged after ``best_config``;
-``local/ipo_optimizer_config.json`` is applied last so you can override any key.
-Set ``IPO_LOCAL_CONFIG`` to a path (repo-relative or absolute) to use a different JSON file
-for the same merge (e.g. run several transformer variants in sequence).
-Set ``IPO_EXPORT_ATTENTION=1`` to save self-attention maps (``results/ipo_optimizer_attention.npz`` and
-``figures/ipo_optimizer_attention_layer0.png``) when ``model_type`` is ``transformer``.
-Set ``IPO_LR_SCHEDULE`` to override JSON: ``constant``, ``cosine``, ``plateau`` (validation-driven reductions),
-or ``exponential`` (see ``lr_schedule`` / ``lr_decay`` in ``best_config`` or ``DEFAULTS``).
-Set ``IPO_SECTOR_PORTFOLIOS=0`` for a single market-vs-IPO index (overrides ``SECTOR_PORTFOLIOS``).
-Set ``IPO_DATA_START`` / ``IPO_DATA_END`` (e.g. ``2015-01-01`` / ``2024-12-31``) to override the default
-sample range (otherwise ``START_DATE`` / ``END_DATE`` below).
-Set ``IPO_LOSS_ROLLING_EPOCHS`` (default ``3``) for the rolling mean window in
-``figures/ipo_optimizer_loss_train_val_rolling.png``.
-Saves ``figures/ipo_optimizer_returns_vs_equal_weight_val.png``: cumulative growth of $1 for the
-learned allocator vs fixed 50/50 market/IPO on **validation** windows (sector mode: mean across sleeves).
-Set ``IPO_SECTOR_SOURCE`` to ``yfinance`` (Yahoo ``info['sector']``), ``compustat`` (default:
-Compustat GICS via ``comp.funda``/``comp.company`` join on ticker), or ``ccm`` / ``wrds_chain``
-(date-valid chain: ``match_date`` = max(ipo_date, first CRSP price date) → ``stocknames`` /
-``dsenames`` → CCM → Compustat GICS; see ``docs/SECTOR_CCM_WORKFLOW.md`` and
-``src/wrds_ipo_gics_enrichment.py``). Cache files: ``results/ticker_sector_cache_*.csv``.
-Pre-build CCM labels only: ``python scripts/generate_sector_cache_ccm.py`` (defaults
-2010–2024 IPO offer dates).
-
-When SECTOR_PORTFOLIOS is True (default): sector labels (GICS or Yahoo) group IPOs into baskets. A mcap-weighted
-IPO basket is built per sector; one shared encoder (GRU/LSTM or Transformer) feeds separate two-way softmax heads (market vs
-that sector basket). Exports ``results/ipo_optimizer_weights_sector_*.csv`` and
-``results/ipo_optimizer_summary_by_sector.txt``.
 """
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
-
-# Windows: PyTorch + NumPy/MKL each link Intel OpenMP; loading both aborts without this.
-# Must be set before importing numpy or torch.
-if sys.platform == "win32":
-    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv(ROOT / ".env")
-except ImportError:
-    pass
+from dotenv import load_dotenv
+load_dotenv(ROOT / ".env")
 
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib.pyplot as plt
+
 from src.wrds_data import (
-    close_wrds_connection,
     get_connection,
     load_ipo_data_from_sdc_wrds,
     load_market_returns_wrds,
     load_sdc_ipo_dates_wrds,
     load_sp500_dow_market_returns_wrds,
     load_stock_returns_wrds,
+    load_vix_wrds,
 )
-from src.data_layer import (
-    add_optional_features,
-    align_returns,
-    build_rolling_windows,
-    build_rolling_windows_sector_heads,
-    train_val_split,
-)
-from src.train import run_training, run_training_sector_heads
-from src.export import (
-    export_sector_group_outputs,
-    export_summary,
-    export_weights_csv,
-    predict_sector_head_weights,
-    predict_weights,
-    portfolio_stats,
-)
-from src.plot_loss import (
-    plot_cumulative_returns_vs_equal_weight,
-    plot_train_val_rolling_and_test,
-    plot_training_loss,
-    slim_history_for_json,
-)
+from src.data_layer import align_returns, add_optional_features, build_rolling_windows, train_val_split
+from src.train import run_training
+from src.export import predict_weights, portfolio_stats, export_weights_csv, export_summary
 from src.policy_layer import ipo_tilt_to_position_scale, policy_rule
-from src.sector_ipo import (
-    fetch_ticker_sectors,
-    fetch_ticker_sectors_ccm_chain,
-    fetch_ticker_sectors_compustat,
-    group_tickers_by_sector,
-    sector_column_name,
-)
 
-START_DATE = "2010-01-01"
-END_DATE = "2024-12-31"
-# Rolling-window splits (prediction date); must match tune_hyperparameters_wrds embargo logic.
-VAL_START = "2019-01-01"
-TEST_START = "2022-01-01"
-
-# When True: Yahoo Finance sectors → per-sector IPO baskets, shared GRU + one 2-way softmax per sector.
-SECTOR_PORTFOLIOS = True
-MIN_TICKERS_PER_SECTOR_GROUP = 12
+START_DATE = "2020-01-01"
+END_DATE = "2025-12-31"
 
 DEFAULTS = {
     "window_len": 126,
     "val_frac": 0.2,
-    "epochs": 50,
-    "lr": 1e-3,
-    "batch_size": 32,
-    "patience": 10,
+    "epochs": 200,
+    "lr": 3e-4,
+    "lr_decay": 0.1,
+    "batch_size": 256,
+    "patience": 200,
     "lambda_vol": 0.5,
     "lambda_cvar": 0.5,
+    "lambda_turnover": 0.0001,
+    "lambda_path": 0.0001,
     "lambda_vol_excess": 1.0,
     "target_vol_annual": 0.25,
     "hidden_size": 64,
     "lambda_diversify": 0.0,
     "min_weight": 0.1,
-    # Emphasize level returns vs risk penalties; optional log-growth proxy for compound return (see src.losses)
-    "mean_return_weight": 1.0,
-    "log_growth_weight": 0.0,
-    "max_grad_norm": 1.0,
-    "grad_norm_mode": "clip",
-    "weight_decay": 1e-5,
-    "dropout": 0.1,
-    "cosine_lr": False,
-    # Learning-rate schedule (dynamic step sizes): constant | cosine | plateau | exponential
-    "lr_schedule": "constant",
-    "lr_decay": 0.5,
-    "plateau_patience": 4,
-    "min_lr": 1e-6,
-    "exponential_gamma": 0.99,
+    "lambda_vs_ew": 0.0,
+    "model_type": "gru",
 }
-
-# Applied when ``model_type`` is ``transformer`` (after JSON / local overrides), so GRU/LSTM defaults stay unchanged.
-TRANSFORMER_CONFIG = {
-    "lr": 3e-4,
-    "batch_size": 64,
-    "lambda_cvar": 1.0,
-    "hidden_size": 128,
-    "weight_decay": 1e-2,
-    "dropout": 0.1,
-    "cosine_lr": False,
-}
-
-_CONFIG_OPTIONAL = frozenset(
-    {
-        "model_type",
-        "num_layers",
-        "weight_decay",
-        "dropout",
-        "cosine_lr",
-        "lr_schedule",
-        "lr_decay",
-        "plateau_patience",
-        "min_lr",
-        "exponential_gamma",
-        "mean_return_weight",
-        "log_growth_weight",
-        "max_grad_norm",
-        "grad_norm_mode",
-    }
-)
 
 
 def load_best_config():
-    """Load best config from tuning; fall back to DEFAULTS if not found."""
-    cfg = {**DEFAULTS}
+    """Load best config from tuning; fall back to DEFAULTS if not found.
+
+    Training mechanics (lr, lr_decay, batch_size, epochs, patience) are always
+    taken from DEFAULTS so that manual edits there take effect immediately.
+    Only model/loss hyperparameters (lambdas, window_len, hidden_size, etc.)
+    are carried over from the saved tuning result.
+    """
+    TRAINING_KEYS = {"lr", "lr_decay", "batch_size", "epochs", "patience"}
     path = ROOT / "results" / "ipo_optimizer_best_config.json"
-    if path.exists():
-        with open(path) as f:
-            out = json.load(f)
-        best = out.get("best_config") or {}
-        for k, v in best.items():
-            if k in cfg or k in _CONFIG_OPTIONAL:
-                cfg[k] = v
-    mt = os.environ.get("IPO_MODEL_TYPE", "").strip()
-    if mt:
-        cfg["model_type"] = mt
-    if cfg.get("model_type") == "transformer":
-        cfg.update(TRANSFORMER_CONFIG)
-    local_override = os.environ.get("IPO_LOCAL_CONFIG", "").strip()
-    if local_override:
-        local_path = Path(local_override)
-        if not local_path.is_absolute():
-            local_path = ROOT / local_path
-    else:
-        local_path = ROOT / "local" / "ipo_optimizer_config.json"
-    if local_path.exists():
-        with open(local_path) as f:
-            local = json.load(f)
-        for k, v in local.items():
-            if k in cfg or k in _CONFIG_OPTIONAL:
-                cfg[k] = v
-    _ls = os.environ.get("IPO_LR_SCHEDULE", "").strip()
-    if _ls:
-        cfg["lr_schedule"] = _ls
+    if not path.exists():
+        return DEFAULTS.copy()
+    with open(path) as f:
+        out = json.load(f)
+    best = out.get("best_config")
+    if not best:
+        return DEFAULTS.copy()
+    cfg = DEFAULTS.copy()
+    for k in cfg:
+        if k in best and k not in TRAINING_KEYS:
+            cfg[k] = best[k]
     return cfg
 
 
-def sector_portfolios_effective() -> bool:
-    """If ``IPO_SECTOR_PORTFOLIOS`` is set, use it; else ``SECTOR_PORTFOLIOS``."""
-    v = os.environ.get("IPO_SECTOR_PORTFOLIOS", "").strip().lower()
-    if v in ("0", "false", "no", "off"):
-        return False
-    if v in ("1", "true", "yes", "on"):
-        return True
-    return SECTOR_PORTFOLIOS
-
-
-def build_ipo_index_mcap(
-    prices_df,
-    ipo_dates_df,
-    shares_dict,
-    holding_days=180,
-    min_names=1,
-    ticker_allowlist: set[str] | None = None,
-):
+def build_ipo_index_mcap(prices_df, ipo_dates_df, shares_dict, holding_days=180, min_names=1):
     ipo_lookup = dict(zip(ipo_dates_df["ticker"], ipo_dates_df["ipo_date"]))
-    if ticker_allowlist is not None:
-        ipo_lookup = {k: v for k, v in ipo_lookup.items() if k in ticker_allowlist}
     returns_df = prices_df.pct_change()
     trading_days = {
         t: prices_df[t].dropna().index.tolist()
@@ -233,15 +94,8 @@ def build_ipo_index_mcap(
         if t != "SPY" and t in ipo_lookup
     }
     all_dates = prices_df.index.tolist()
-    n_all = len(all_dates)
     index_data = []
-    progress_every = max(1, n_all // 20)
-    for i, date in enumerate(all_dates):
-        if i == 0 or (i + 1) % progress_every == 0 or i == n_all - 1:
-            print(
-                f"  [IPO] IPO index progress: day {i + 1}/{n_all} ({100 * (i + 1) / n_all:.0f}%)",
-                flush=True,
-            )
+    for date in all_dates:
         market_caps = {}
         for ticker, ipo_date in ipo_lookup.items():
             if ticker not in trading_days or ticker not in shares_dict:
@@ -277,24 +131,11 @@ def build_ipo_index_mcap(
     return pd.DataFrame(index_data).set_index("date")
 
 
-def prepare_data(
-    conn,
-    start: str | None = None,
-    end: str | None = None,
-    *,
-    sector_portfolios: bool = False,
-):
+def prepare_data(conn):
     """Load and prepare IPO + market data. Returns dict with df, feature_cols for rolling windows."""
-    start = start or START_DATE
-    end = end or END_DATE
-    print(
-        f"[IPO] Loading data {start}–{end}: SDC IPO list + CRSP prices (large WRDS query; "
-        "often several minutes, not frozen)...",
-        flush=True,
-    )
     # IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices
     ipo_csv = load_ipo_data_from_sdc_wrds(
-        conn, start=start, end=end, library="sdc", price_source="crsp"
+        conn, start=START_DATE, end=END_DATE, library="sdc", price_source="crsp"
     )
     print(f"IPO data from SDC + CRSP: {len(ipo_csv)} rows, {ipo_csv['tic'].nunique()} tickers")
 
@@ -305,9 +146,8 @@ def prepare_data(
     prices_ipo.index = pd.to_datetime(prices_ipo.index).normalize()
 
     # IPO dates from SDC (not first trading date); filter to tickers with prices
-    print("[IPO] Loading SDC IPO dates for tickers...", flush=True)
     ipo_dates = load_sdc_ipo_dates_wrds(
-        conn, start=start, end=end, library="sdc"
+        conn, start=START_DATE, end=END_DATE, library="sdc"
     )
     ipo_df = ipo_dates[ipo_dates["ticker"].isin(prices_ipo.columns)].copy()
     ipo_df = ipo_df.sort_values("ipo_date").reset_index(drop=True)
@@ -317,9 +157,8 @@ def prepare_data(
     print(f"IPO tickers: {len(ipo_df)}, Date range: {start_d} to {end_d}")
 
     # Market returns: market-cap weighted S&P 500 (82%) + Dow Jones (18%) from CRSP
-    # Use full date range through `end` to align with requested sample
-    market_end = max(end_d, end) if end_d else end
-    print("[IPO] Loading market returns (CRSP SPY/DIA blend)...", flush=True)
+    # Use full date range through END_DATE to extend to end of 2025
+    market_end = max(end_d, END_DATE) if end_d else END_DATE
     market_ret = load_sp500_dow_market_returns_wrds(
         conn, start=start_d, end=market_end, w_sp500=0.82, w_dow=0.18
     )
@@ -349,7 +188,7 @@ def prepare_data(
             select gvkey, datadate, csho
             from comp.funda
             where gvkey in ('{gvkey_list}')
-                and datadate >= '{start}'
+                and datadate >= '2020-01-01'
                 and csho > 0
                 and indfmt = 'INDL' and datafmt = 'STD'
             """,
@@ -372,144 +211,35 @@ def prepare_data(
     prices = prices_ipo.copy().ffill().bfill()
     print(f"Market return days: {len(market_ret)}, Tickers with shares: {len(shares_outstanding)}")
 
-    n_days = len(prices.index)
-
-    if sector_portfolios:
-        _src = os.environ.get("IPO_SECTOR_SOURCE", "compustat").strip().lower()
-        if _src in ("yfinance", "yahoo", "yf"):
-            cache = ROOT / "results" / "ticker_sector_cache_yfinance.csv"
-            sec_series = fetch_ticker_sectors(ipo_tickers, cache_path=cache, verbose=True)
-        elif _src in ("ccm", "wrds_chain", "chain", "ccm_gics"):
-            cache = ROOT / "results" / "ticker_sector_cache_ccm.csv"
-            ipo_ccm = ipo_df[["ticker", "ipo_date"]].copy()
-            _fd: dict[str, pd.Timestamp] = {}
-            for _tic in ipo_ccm["ticker"]:
-                if _tic in prices_ipo.columns:
-                    _s = prices_ipo[_tic].dropna()
-                    if len(_s) > 0:
-                        _fd[_tic] = pd.Timestamp(_s.index.min()).normalize()
-            ipo_ccm["first_crsp_date"] = ipo_ccm["ticker"].map(_fd)
-            sec_series = fetch_ticker_sectors_ccm_chain(
-                conn,
-                ipo_ccm,
-                ipo_tickers,
-                cache_path=cache,
-                verbose=True,
-            )
-        else:
-            cache = ROOT / "results" / "ticker_sector_cache_compustat.csv"
-            sec_series = fetch_ticker_sectors_compustat(
-                conn, ipo_tickers, cache_path=cache, verbose=True
-            )
-        groups = group_tickers_by_sector(
-            ipo_tickers, sec_series, min_names=MIN_TICKERS_PER_SECTOR_GROUP
-        )
-        if not groups:
-            raise RuntimeError(
-                "No sector groups met MIN_TICKERS_PER_SECTOR_GROUP="
-                f"{MIN_TICKERS_PER_SECTOR_GROUP}. Lower that constant or check sector cache."
-            )
-        sector_labels_sorted = sorted(groups.keys(), key=lambda x: (-len(groups[x]), x))
-        print(
-            f"[IPO] Sector baskets: {len(sector_labels_sorted)} groups — "
-            f"{[(k, len(groups[k])) for k in sector_labels_sorted[:8]]}"
-            + (" ..." if len(sector_labels_sorted) > 8 else ""),
-            flush=True,
-        )
-        combined = pd.DataFrame({"market_return": market_ret})
-        combined["market_return"] = combined["market_return"].clip(-0.10, 0.10)
-        sector_cols: list[str] = []
-        for label in sector_labels_sorted:
-            allow = set(groups[label])
-            col = sector_column_name(label)
-            print(
-                f"[IPO] Sector IPO index ({label}, n={len(allow)}): "
-                f"{n_days} days (CPU-heavy)...",
-                flush=True,
-            )
-            ipo_index_s = build_ipo_index_mcap(
-                prices,
-                ipo_df,
-                shares_outstanding,
-                holding_days=180,
-                min_names=1,
-                ticker_allowlist=allow,
-            )
-            s = ipo_index_s["ipo_ret"].clip(-0.50, 0.50).rename(col)
-            combined[col] = s
-            sector_cols.append(col)
-        # Days with no sector IPO basket activity are NaN in the index; R uses nan_to_num(sec)
-        # but model inputs X are built from full feature_cols — NaNs there become NaN weights and
-        # garbage per-sector Sharpe/MaxDD. Treat missing sector return as 0 (no IPO sleeve).
-        combined[sector_cols] = combined[sector_cols].fillna(0.0)
-        combined = combined.sort_index().dropna(subset=["market_return"])
-        df = add_optional_features(combined, include_vix=False)
-        feature_cols = ["market_return"] + sector_cols + [c for c in ("rolling_vol", "vix") if c in df.columns]
-        return {
-            "df": df,
-            "feature_cols": feature_cols,
-            "sector_portfolios": True,
-            "sector_labels": sector_labels_sorted,
-            "sector_ret_cols": sector_cols,
-        }
-
-    print(
-        f"[IPO] Building market-cap IPO index over {n_days} trading days (CPU-heavy; "
-        f"can take 1–15+ min with many tickers)...",
-        flush=True,
-    )
+    # Build IPO index
     ipo_index = build_ipo_index_mcap(prices, ipo_df, shares_outstanding, holding_days=180)
     print(f"IPO index: {ipo_index['ipo_ret'].notna().sum()} days with valid returns")
 
+    # Train
     ipo_ret = ipo_index["ipo_ret"].rename("ipo_return")
     df = align_returns(market_ret, ipo_ret)
-    df = add_optional_features(df, include_vix=False)
+    vix_series = load_vix_wrds(conn, start=start_d, end=market_end)
+    print(f"VIX data from CBOE: {len(vix_series)} days")
+    df = add_optional_features(df, vix_series=vix_series)
     feature_cols = list(df.columns)
-    return {"df": df, "feature_cols": feature_cols, "sector_portfolios": False}
+    return {"df": df, "feature_cols": feature_cols}
 
 
 def main():
     print("Connecting to WRDS...")
     conn = get_connection()
     print("Connected.")
-    print(
-        "[IPO] Next steps load SDC/CRSP data then build the IPO index. "
-        "Long gaps in output are normal—queries are running on WRDS.",
-        flush=True,
-    )
 
-    try:
-        sp = sector_portfolios_effective()
-        data_start = os.environ.get("IPO_DATA_START", "").strip() or START_DATE
-        data_end = os.environ.get("IPO_DATA_END", "").strip() or END_DATE
-        print(
-            f"[IPO] sector_portfolios={sp}  (env IPO_SECTOR_PORTFOLIOS or SECTOR_PORTFOLIOS={SECTOR_PORTFOLIOS})",
-            flush=True,
-        )
-        print(f"[IPO] data range: {data_start} – {data_end}", flush=True)
-        data_prep = prepare_data(conn, start=data_start, end=data_end, sector_portfolios=sp)
-    finally:
-        close_wrds_connection(conn)
+    data_prep = prepare_data(conn)
     df = data_prep["df"]
     feature_cols = data_prep["feature_cols"]
-    use_sectors = bool(data_prep.get("sector_portfolios"))
-    sector_labels = data_prep.get("sector_labels") or []
-    sector_ret_cols = data_prep.get("sector_ret_cols") or []
 
     cfg = load_best_config()
     print(f"Hyperparameters: {cfg}")
 
-    if use_sectors:
-        X, R, dates = build_rolling_windows_sector_heads(
-            df,
-            window_len=cfg["window_len"],
-            feature_cols=feature_cols,
-            sector_ret_cols=sector_ret_cols,
-        )
-    else:
-        X, R, dates = build_rolling_windows(
-            df, window_len=cfg["window_len"], feature_cols=feature_cols
-        )
+    X, R, dates = build_rolling_windows(
+        df, window_len=cfg["window_len"], feature_cols=feature_cols
+    )
     X_train, R_train, d_train, X_val, R_val, d_val = train_val_split(
         X, R, dates, val_frac=cfg["val_frac"]
     )
@@ -526,179 +256,93 @@ def main():
         "n_assets": 2,
         "window_len": cfg["window_len"],
     }
-    if use_sectors:
-        data["n_sectors"] = len(sector_labels)
     print(f"Train windows: {X_train.shape[0]}, Val windows: {X_val.shape[0]}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("[IPO] Starting model training (watch for [IPO] epoch lines below)...", flush=True)
-    if use_sectors:
-        model, history = run_training_sector_heads(
-            data,
-            device=device,
-            epochs=cfg["epochs"],
-            lr=cfg["lr"],
-            batch_size=cfg["batch_size"],
-            patience=cfg["patience"],
-            lambda_vol=cfg["lambda_vol"],
-            lambda_cvar=cfg["lambda_cvar"],
-            lambda_diversify=cfg.get("lambda_diversify", 1.0),
-            min_weight=cfg.get("min_weight", 0.1),
-            lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
-            target_vol_annual=cfg.get("target_vol_annual", 0.25),
-            hidden_size=cfg["hidden_size"],
-            model_type=cfg.get("model_type", "gru"),
-            verbose=True,
-            log_every=1,
-            weight_decay=cfg.get("weight_decay", 1e-5),
-            dropout=cfg.get("dropout", 0.1),
-            cosine_lr=cfg.get("cosine_lr", False),
-            lr_schedule=cfg.get("lr_schedule"),
-            lr_decay=cfg.get("lr_decay", 0.5),
-            plateau_patience=cfg.get("plateau_patience", 4),
-            min_lr=cfg.get("min_lr", 1e-6),
-            exponential_gamma=cfg.get("exponential_gamma", 0.99),
-            mean_return_weight=cfg.get("mean_return_weight", 1.0),
-            log_growth_weight=cfg.get("log_growth_weight", 0.0),
-            max_grad_norm=float(cfg.get("max_grad_norm", 1.0)),
-            grad_norm_mode=str(cfg.get("grad_norm_mode", "clip")),
-        )
-    else:
-        model, history = run_training(
-            data,
-            device=device,
-            epochs=cfg["epochs"],
-            lr=cfg["lr"],
-            batch_size=cfg["batch_size"],
-            patience=cfg["patience"],
-            lambda_vol=cfg["lambda_vol"],
-            lambda_cvar=cfg["lambda_cvar"],
-            lambda_diversify=cfg.get("lambda_diversify", 1.0),
-            min_weight=cfg.get("min_weight", 0.1),
-            lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
-            target_vol_annual=cfg.get("target_vol_annual", 0.25),
-            hidden_size=cfg["hidden_size"],
-            model_type=cfg.get("model_type", "gru"),
-            verbose=True,
-            log_every=1,
-            weight_decay=cfg.get("weight_decay", 1e-5),
-            dropout=cfg.get("dropout", 0.1),
-            cosine_lr=cfg.get("cosine_lr", False),
-            lr_schedule=cfg.get("lr_schedule"),
-            lr_decay=cfg.get("lr_decay", 0.5),
-            plateau_patience=cfg.get("plateau_patience", 4),
-            min_lr=cfg.get("min_lr", 1e-6),
-            exponential_gamma=cfg.get("exponential_gamma", 0.99),
-            mean_return_weight=cfg.get("mean_return_weight", 1.0),
-            log_growth_weight=cfg.get("log_growth_weight", 0.0),
-            max_grad_norm=float(cfg.get("max_grad_norm", 1.0)),
-            grad_norm_mode=str(cfg.get("grad_norm_mode", "clip")),
-        )
+    model, history = run_training(
+        data,
+        device=device,
+        epochs=cfg["epochs"],
+        lr=cfg["lr"],
+        lr_decay=cfg.get("lr_decay", 0.1),
+        batch_size=cfg["batch_size"],
+        patience=cfg["patience"],
+        lambda_vol=cfg["lambda_vol"],
+        lambda_cvar=cfg["lambda_cvar"],
+        lambda_turnover=cfg.get("lambda_turnover", 0.01),
+        lambda_path=cfg.get("lambda_path", 0.01),
+        lambda_diversify=cfg.get("lambda_diversify", 1.0),
+        min_weight=cfg.get("min_weight", 0.1),
+        lambda_vol_excess=cfg.get("lambda_vol_excess", 1.0),
+        target_vol_annual=cfg.get("target_vol_annual", 0.25),
+        lambda_vs_ew=cfg.get("lambda_vs_ew", 0.0),
+        hidden_size=cfg["hidden_size"],
+        model_type=cfg.get("model_type", "gru"),
+    )
     print(f"Trained for {len(history)} epochs")
+
+    # Save loss history for auditing
+    fig_dir = ROOT / "figures"
+    fig_dir.mkdir(exist_ok=True)
+    pd.DataFrame(history).to_csv(ROOT / "results" / "training_history.csv", index=False)
+
+    # Plot train/val loss — semilog with smoothed train curve and LR-drop marker
+    epochs_x  = [h["epoch"] for h in history]
+    train_loss = np.array([h["train_loss"] for h in history])
+    val_loss   = np.array([h["val_loss"]   for h in history])
+
+    # Smooth noisy train loss with a 10-epoch rolling mean for readability
+    smooth_window = min(10, len(train_loss))
+    train_smooth = np.convolve(train_loss, np.ones(smooth_window) / smooth_window, mode="same")
+
+    # Clip to positive for log scale (loss can be negative when return > risk penalties)
+    t_raw    = np.clip(np.abs(train_loss),  1e-8, None)
+    t_smooth = np.clip(np.abs(train_smooth), 1e-8, None)
+    v_plot   = np.clip(np.abs(val_loss),    1e-8, None)
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.semilogy(epochs_x, t_raw,    alpha=0.25, color="#1f77b4", linewidth=0.8)
+    ax.semilogy(epochs_x, t_smooth, color="#1f77b4", linewidth=2,
+                label="Train loss (10-ep smoothed)")
+    ax.semilogy(epochs_x, v_plot,   color="#ff7f0e", linewidth=2,
+                marker="s", markersize=2, label="Validation loss")
+    # Mark LR drop after epoch 1
+    ax.axvline(x=1, color="red", linewidth=1.2, linestyle="--", alpha=0.7,
+               label=f"LR drop ×{cfg.get('lr_decay', 0.1):.1f} (epoch 1)")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("|Loss|  (log scale)")
+    ax.set_title(
+        f"{cfg.get('model_type', 'gru').upper()} Training — {len(history)} epochs  |  "
+        f"lr={cfg['lr']:.0e}→{cfg['lr']*cfg.get('lr_decay',0.1):.0e}  "
+        f"batch={cfg['batch_size']}  "
+        f"λ_path={cfg.get('lambda_path',0):.0e}  λ_turn={cfg.get('lambda_turnover',0):.0e}"
+    )
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(fig_dir / "ipo_optimizer_loss.png", dpi=150)
+    fig.savefig(fig_dir / "ipo_optimizer_loss_semilog.png", dpi=150)
+    plt.close()
+    print(f"Saved loss plot to {fig_dir / 'ipo_optimizer_loss_semilog.png'}")
+
+    weights = predict_weights(model, data["X_val"], device)
+    stats = portfolio_stats(weights, data["R_val"])
 
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
-    hist_path = out_dir / "ipo_optimizer_training_history.json"
-    with open(hist_path, "w", encoding="utf-8") as f:
-        json.dump(slim_history_for_json(history), f, indent=2)
-    print(f"Saved training history to {hist_path}")
+    weights_path = out_dir / "ipo_optimizer_weights.csv"
+    summary_path = out_dir / "ipo_optimizer_summary.txt"
 
-    fig_dir = ROOT / "figures"
-    fig_dir.mkdir(exist_ok=True)
-    title_base = "IPO Optimizer: Training and Validation Loss"
-    if use_sectors:
-        title_base += f" ({len(sector_labels)} sector heads)"
-    roll_w = int(os.environ.get("IPO_LOSS_ROLLING_EPOCHS", "3").strip() or "3")
-    roll_w = max(1, roll_w)
-    rolling_path = plot_train_val_rolling_and_test(
-        history,
-        fig_dir / "ipo_optimizer_loss_train_val_rolling.png",
-        test_loss=None,
-        rolling_epochs=roll_w,
-        title=f"{title_base} — rolling mean over {roll_w} epochs",
-    )
-    print(f"Saved rolling train/val loss plot to {rolling_path}")
-    semilogy_path = plot_training_loss(
-        history,
-        fig_dir / "ipo_optimizer_loss.png",
-        title=title_base,
-        semilogy=True,
-    )
-    print(f"Saved semilogy loss plot to {semilogy_path}")
+    export_weights_csv(data["dates_val"], weights, weights_path)
+    export_summary(stats, weights, summary_path, R=data["R_val"])
+    print(f"Exported weights to {weights_path}")
+    print(f"Exported summary to {summary_path}")
 
-    if os.environ.get("IPO_EXPORT_ATTENTION", "").strip().lower() in ("1", "true", "yes"):
-        if cfg.get("model_type") == "transformer":
-            from src.TRANSFORMER_attention_export import save_attention_heatmap_png, save_attention_npz
-            from src.model import SectorMultiHeadTransformerAllocator, TransformerAllocator
-
-            if isinstance(model, (TransformerAllocator, SectorMultiHeadTransformerAllocator)):
-                n = min(32, int(data["X_val"].shape[0]))
-                x_s = torch.as_tensor(data["X_val"][:n], device=device, dtype=torch.float32)
-                ap = out_dir / "ipo_optimizer_attention.npz"
-                _, maps = save_attention_npz(
-                    model,
-                    x_s,
-                    ap,
-                    meta={"window_len": str(cfg["window_len"]), "batch": str(n)},
-                )
-                if maps:
-                    save_attention_heatmap_png(
-                        maps[0],
-                        ROOT / "figures" / "ipo_optimizer_attention_layer0.png",
-                        title="Layer 0 self-attention (mean over batch)",
-                    )
-                print(
-                    f"[IPO] Saved attention to {ap} and "
-                    f"{ROOT / 'figures' / 'ipo_optimizer_attention_layer0.png'}",
-                    flush=True,
-                )
-
-    if use_sectors:
-        weights = predict_sector_head_weights(model, data["X_val"], device)
-        export_sector_group_outputs(
-            data["dates_val"], weights, data["R_val"], sector_labels, out_dir
-        )
-        print(f"Exported per-sector weights + {out_dir / 'ipo_optimizer_summary_by_sector.txt'}")
-        avg_ipo = float(np.mean(weights[:, :, 1])) if weights.ndim == 3 else 0.0
-        scale = ipo_tilt_to_position_scale(avg_ipo)
-        print(policy_rule(avg_ipo))
-        print(f"Suggested position scale (avg across sector IPO sleeves): {scale:.2f}")
-        g = weights.shape[1]
-        for idx in range(g):
-            st = portfolio_stats(weights[:, idx, :], data["R_val"][:, idx, :])
-            print(
-                f"  [{sector_labels[idx]}] Sharpe={st['sharpe_annualized']:.2f}  "
-                f"MaxDD={st['max_drawdown']:.2%}"
-            )
-    else:
-        weights = predict_weights(model, data["X_val"], device)
-        stats = portfolio_stats(weights, data["R_val"])
-        weights_path = out_dir / "ipo_optimizer_weights.csv"
-        summary_path = out_dir / "ipo_optimizer_summary.txt"
-        export_weights_csv(data["dates_val"], weights, weights_path)
-        export_summary(stats, weights, summary_path, R=data["R_val"])
-        print(f"Exported weights to {weights_path}")
-        print(f"Exported summary to {summary_path}")
-        avg_ipo = float(weights[:, 1].mean()) if weights.shape[1] >= 2 else 0.0
-        scale = ipo_tilt_to_position_scale(avg_ipo)
-        print(policy_rule(avg_ipo))
-        print(f"Suggested position scale: {scale:.2f}")
-        print(f"Metrics: Sharpe={stats['sharpe_annualized']:.2f}, MaxDD={stats['max_drawdown']:.2%}")
-
-    cmp_title = (
-        "Validation: cumulative growth vs 50/50 (mean across sector sleeves)"
-        if use_sectors
-        else "Validation: cumulative growth vs 50/50 market/IPO"
-    )
-    cmp_path = plot_cumulative_returns_vs_equal_weight(
-        weights,
-        data["R_val"],
-        data["dates_val"],
-        fig_dir / "ipo_optimizer_returns_vs_equal_weight_val.png",
-        title=cmp_title,
-    )
-    print(f"Saved returns vs 50/50 plot to {cmp_path}")
-
+    avg_ipo = float(weights[:, 1].mean()) if weights.shape[1] >= 2 else 0.0
+    scale = ipo_tilt_to_position_scale(avg_ipo)
+    print(policy_rule(avg_ipo))
+    print(f"Suggested position scale: {scale:.2f}")
+    print(f"Metrics: Sharpe={stats['sharpe_annualized']:.2f}, MaxDD={stats['max_drawdown']:.2%}")
     return 0
 
 

@@ -1,51 +1,50 @@
-# Self-Critique: Week 6 Deliverable
+# Self-Critique (Week 6)
+*Date: February 20, 2026*
 
-## OBSERVE: Critical Reading of the Report
-
-After reviewing the report and running the implementation:
-- The GRU-based allocator runs end-to-end and produces valid weights
-- Mathematical formulation is present; loss terms are implemented and tunable
-- Real WRDS data (SDC + CRSP) replaces prior yfinance setup
-- Validation metrics (Sharpe 2.53, MaxDD -7.66%) are strong but limited to in-sample/validation period
-- Weights are nearly constant (~84% market, ~16% IPO); little tactical tilting
-- Turnover displays as 0.0000 due to formatting; actual value ~1e-5
+*Max 1 page. OODA: Observe → Orient → Decide → Act.*
 
 ---
 
-## ORIENT: Analysis
+## OBSERVE
 
-### Strengths 
-
-1. **Rigorous Data Pipeline**: Uses institutional WRDS data (SDC for IPO dates, CRSP for prices and market returns) with explicit handling of split-adjusted prices and shares. Data volume (770K rows, 1,136 tickers) and date alignment are well managed.
-
-2. **Differentiable, Modular Loss**: The objective function is clearly decomposed (mean return, CVaR, variance, vol excess, turnover, path stability) with configurable hyperparameters. This supports interpretability and systematic tuning.
-
-3. **Evidence of Validation**: Hyperparameter grid search (32 configs) optimizes validation Sharpe; early stopping prevents overfitting; baseline comparisons (market, IPO-only, 50/50) provide context.
-
-### Areas for Improvement 
-
-1. **No True Out-of-Sample Test**: All reported metrics are on the validation set (last 20% of 2020–2024). There is no held-out test period (e.g., 2025 or a fixed future window) to assess generalization. Validation Sharpe can overstate performance.
-
-2. **Near-Constant Weights Undercut “Optimization”**: The model outputs almost identical weights every day. The GRU may be underfitting to time-varying signals, or the loss heavily penalizes turnover/path instability. The value of a neural allocator over a simple static 84/16 rule is unclear.
-
-3. **Mathematical Formulation Incomplete in Report**: The CVaR smoothing and softmax mapping are mentioned but not fully specified. A reader cannot reproduce the objective without reading the code. Equations for \(L_{\text{cvar}}\) and the GRU → MLP → softmax architecture should be written explicitly.
-
-### Critical Risks/Assumptions
-
-**Overfitting to validation**: The best config is chosen to maximize validation Sharpe. Without a true test set, we do not know if 2.53 Sharpe generalizes. The 2020–2024 period (including COVID and IPO boom) may not represent future regimes. We assume WRDS data is accurate and that our IPO index construction (180 days, market-cap weighted) is a reasonable proxy for investable IPO exposure—both are material assumptions.
+- Read the report as a first-time reader: the problem (policy over participate/entry/hold/size) and objective (E[R] − λ·CVaR − κ·Cost − μ·MDD) are clear, but the **report’s headline formula** includes β·Sharpe while the **code does not**—so there is a small documentation inconsistency to fix or explicitly justify.
+- Re-running the code: `test_basic.py` passes. **Data**: The pipeline *is* wired to real data: `run_pytorch.py --data yfinance` fetches S&P 500 tickers and prices from Yahoo Finance and trains the policy. The **notebook** uses synthetic data by default for speed/reproducibility. So “only synthetic” applies to the notebook and to the default script run (`--data synth`), not to the project as a whole.
+- First reactions: Strengths are the separation of backtest/objective and the REINFORCE setup, plus real-data support via yfinance. Weak spots: the report/notebook don’t yet show a concrete yfinance run or its output; validation is random train/val (no time-based split).
 
 ---
 
-## DECIDE: Concrete Next Actions
+## ORIENT
 
-1. **Introduce a True Test Split**: Reserve the last 3–6 months of data (or 2025 when available) as a never-touched test set. Pull 2025 data from yfinance to bridge the lack of data gap. Train and tune only on train/validation; report Sharpe, return, drawdown, and turnover exclusively on the test period. Document the split dates clearly in the report.
+**Strengths (max 3)**
 
-2. **Diagnose Why Weights Are Static**: Add logging of weight variance over time and correlation with features (e.g., rolling vol, momentum). If the model is collapsing to constants, experiment with (a) reducing turnover/path penalties, (b) adding features that vary more, or (c) increasing model capacity. Document findings in the report.
+- **Clear problem and objective**: Policy and score (E[R] − λ·CVaR − κ·Cost − μ·MDD) are stated precisely; reader can see what is being optimized and why.
+- **Testable design**: Backtest and objective are separate from the policy; `test_basic.py` and the notebook validate edge cases (empty, never participate, CVaR/MDD).
+- **Honest limitations**: Report and notebook state limitations (e.g. high validation variance, no walk-forward yet); next steps are listed. Real data is supported in `run_pytorch.py` (yfinance / path) but not demonstrated in the notebook.
 
-3. **Complete Mathematical Specification in Report**: Add explicit formulas for the CVaR approximation (soft sorting, temperature), the GRU/MLP architecture, and the softmax output. Include a small diagram or pseudocode so the approach is reproducible from the report alone.
+**Areas for improvement (max 3)**
+
+- **Align report formula with code**: Either add a Sharpe term in `objective.score()` or state once in the report that “we implement the reduced form without β·Sharpe” and remove/minimize the Sharpe term in the main formulation to avoid confusion.
+- **Validation rigor**: No walk-forward or time-based split yet; only random train/val. Add one concrete step (e.g., split by IPO year or “last 20% by date”) in the notebook or a script and report OOS score.
+- **Show one real-data run**: The pipeline already uses real data via `run_pytorch.py --data yfinance` (yfinance). Improve by documenting that command in the report/notebook and pasting example output (train/val score) so “works on real data” is clearly demonstrated.
+
+**Critical risks / assumptions (2–3 sentences)**
+
+- We assume the current synthetic episode format (e.g., `Episode.df` with `close`) matches what we will use for real data; if the rich CSV or index pipeline produces different columns or date alignment, the pipeline could break and needs a quick smoke test. We also assume λ, κ, μ = 1.0 are acceptable defaults; they are not tuned, so results are sensitive to these choices.
 
 ---
 
-## ACT: Resource Needs
+## DECIDE
 
-To implement these actions, we need: (1) A clear date boundary for the test set (e.g., "2025-01-01 onward" or "last 60 trading days") and a script change to enforce it; (2) Basic feature analysis (e.g., pandas rolling stats) to inspect input variance; (3) Optional: learning PyTorch hooks or activation logging if we need to debug the GRU hidden states. Blocker: CRSP data for 2025 may not be available yet; we may need to use the last portion of 2024 as a proxy test period and note this limitation.
+**Concrete next actions (max 3; achievable within a week)**
+
+1. **Report/code consistency**: In `report.md`, add one sentence after the main formula: “The current implementation uses the form without β·Sharpe (Score = E[R] − λ·CVaR − κ·E[Cost] − μ·MDD); Sharpe can be added later.” Optionally remove or de-emphasize β·Sharpe in the single “max” equation so the implemented objective is the default.
+2. **One time-based validation**: In the notebook or a small script, split episodes by time (e.g., by `ipo_date`: train on earliest 80%, test on latest 20%), run backtest + score on the test set, and report the out-of-sample score in the notebook or report.
+3. **Document a real-data run**: Add to the report or notebook the exact command for a yfinance run (e.g. `run_pytorch.py --data yfinance --max_tickers 50 --n_epochs 20`) and paste example output (train/val score) so readers see the pipeline works on live data from Yahoo Finance.
+
+---
+
+## ACT
+
+**Resource needs (2–3 sentences)**
+
+- Real data is already available via yfinance in `run_pytorch.py`; no extra dataset is required. The main need is to run once (e.g. `--data yfinance --max_tickers 50`), capture the output, and add it to the report or notebook. For walk-forward, no new libraries are needed—only a time-based split (e.g. by `ipo_date`) in the notebook or script. If you prefer to use your specific IPO list (e.g. from dailyhistorical_21-26.csv) instead of S&P 500, that would mean building a meta CSV from that list and using `--data path` with prices from yfinance or the index builder.
