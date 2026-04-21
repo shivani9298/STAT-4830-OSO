@@ -101,6 +101,44 @@ def export_weights_csv(
     df.to_csv(out_path)
 
 
+def model_csv_suffix(model_tag: str) -> str:
+    """``gru`` -> ``""``; ``lstm`` -> ``"_lstm"`` (matches compare / holdout scripts)."""
+    t = str(model_tag).strip().lower() or "gru"
+    return "" if t == "gru" else f"_{t}"
+
+
+def export_window_returns_csv(
+    dates: np.ndarray,
+    R: np.ndarray,
+    out_path: str | Path,
+) -> None:
+    """
+    One row per rolling window (same order as ``export_weights_csv``): ``date``, ``market_return``,
+    ``ipo_return``, ``equal_weight_return`` (50/50 blend of the two assets that day).
+
+    ``R`` can be ``(N, 2)`` or sector tensor ``(N, G, 2)`` (means across sleeves for a single benchmark series).
+    """
+    R = np.asarray(R, dtype=np.float64)
+    if R.ndim == 3:
+        R = R.mean(axis=1)
+    if R.ndim != 2 or R.shape[1] < 2:
+        raise ValueError("R must be (N, 2) or (N, G, 2)")
+    m = R[:, 0]
+    ipo = R[:, 1]
+    eq = 0.5 * (m + ipo)
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(dates),
+            "market_return": m,
+            "ipo_return": ipo,
+            "equal_weight_return": eq,
+        }
+    )
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_path, index=False)
+
+
 def _stats_line(name: str, s: dict) -> str:
     """Format a stats dict as a compact line."""
     return (f"  {name:12} Total={s['total_return']:.2%}  AnnRet={s['return_annualized']:.2%}  "

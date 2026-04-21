@@ -1,0 +1,1006 @@
+Connecting to WRDS...
+Connected.
+[IPO] Next steps load SDC/CRSP data then build the IPO index. Long gaps in output are normal—queries are running on WRDS.
+[IPO] sector_portfolios=False  (env IPO_SECTOR_PORTFOLIOS or SECTOR_PORTFOLIOS=True)
+[IPO] data range: 2010-01-01 – 2024-12-31
+[IPO] Loading data 2010-01-01–2024-12-31: SDC IPO list + CRSP prices (large WRDS query; often several minutes, not frozen)...
+[IPO] WRDS: fetching IPO ticker list from SDC...
+[IPO] WRDS: loading CRSP daily prices for 4252 tickers (2010-01-01–2024-12-31)...
+IPO data from SDC + CRSP: 4712045 rows, 3030 tickers
+[IPO] Loading SDC IPO dates for tickers...
+IPO tickers: 3030, Date range: 2010-01-04 to 2024-12-31
+[IPO] Loading market returns (CRSP SPY/DIA blend)...
+[IPO] WRDS: resolving 2 tickers to permnos...
+[IPO] WRDS: mapped 2 permnos from 2 tickers
+Market return days: 3774, Tickers with shares: 3030
+[IPO] Building market-cap IPO index over 3774 trading days (CPU-heavy; can take 1–15+ min with many tickers)...
+  [IPO] IPO index progress: day 1/3774 (0%)
+  [IPO] IPO index progress: day 188/3774 (5%)
+  [IPO] IPO index progress: day 376/3774 (10%)
+  [IPO] IPO index progress: day 564/3774 (15%)
+  [IPO] IPO index progress: day 752/3774 (20%)
+  [IPO] IPO index progress: day 940/3774 (25%)
+  [IPO] IPO index progress: day 1128/3774 (30%)
+  [IPO] IPO index progress: day 1316/3774 (35%)
+  [IPO] IPO index progress: day 1504/3774 (40%)
+  [IPO] IPO index progress: day 1692/3774 (45%)
+  [IPO] IPO index progress: day 1880/3774 (50%)
+  [IPO] IPO index progress: day 2068/3774 (55%)
+  [IPO] IPO index progress: day 2256/3774 (60%)
+  [IPO] IPO index progress: day 2444/3774 (65%)
+  [IPO] IPO index progress: day 2632/3774 (70%)
+  [IPO] IPO index progress: day 2820/3774 (75%)
+  [IPO] IPO index progress: day 3008/3774 (80%)
+  [IPO] IPO index progress: day 3196/3774 (85%)
+  [IPO] IPO index progress: day 3384/3774 (90%)
+  [IPO] IPO index progress: day 3572/3774 (95%)
+  [IPO] IPO index progress: day 3760/3774 (100%)
+  [IPO] IPO index progress: day 3774/3774 (100%)
+IPO index: 3772 days with valid returns
+Hyperparameters: {'window_len': 84, 'val_frac': 0.2, 'epochs': 50, 'lr': 0.0003, 'batch_size': 256, 'patience': 50, 'lambda_vol': 0.3, 'lambda_cvar': 0.3, 'lambda_vol_excess': 0.5, 'target_vol_annual': 0.25, 'hidden_size': 64, 'lambda_diversify': 0.0, 'min_weight': 0.1, 'mean_return_weight': 2.5, 'log_growth_weight': 0.5, 'lambda_turnover': 0.0, 'lambda_path': 0.0, 'cvar_temperature': 0.1, 'mean_loss_mode': 'linear', 'huber_delta': 0.02, 'winsor_abs': None, 'warmup_epochs': 0, 'log_loss_term_breakdown': True, 'max_grad_norm': 1.0, 'grad_norm_mode': 'clip', 'weight_decay': 1e-05, 'dropout': 0.1, 'cosine_lr': False, 'lr_schedule': 'plateau', 'lr_decay': 0.1, 'plateau_patience': 4, 'min_lr': 1e-06, 'exponential_gamma': 0.99, 'model_type': 'gru'}
+Train windows: 2951, Val windows: 737
+[IPO] Starting model training (watch for [IPO] epoch lines below)...
+[IPO] Training running  device=cpu  train_windows=2951  val_windows=737  epochs(max)=50  patience=50  lr_schedule=plateau
+  [IPO] epoch 1/50  train_loss=0.043750  val_loss=0.054973  lr=3.00e-04  |grad|_pre μ=2.081e-01 max=5.721e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+2.104962e-04  λ=0.3  λ·raw=+6.314885e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.592635e-03  λ=0.5  λ·raw=-1.296317e-03
+    mean          raw=-2.831223e-03  λ=2.5  λ·raw=-7.078056e-03
+    turnover      raw=+5.992415e-04  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+1.038136e-01  λ=0.5  λ·raw=+5.190680e-02
+    volatility    raw=+5.145601e-04  λ=0.3  λ·raw=+1.543680e-04
+    weight_path   raw=+4.583420e-07  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+6.165355e-04  λ=0.3  λ·raw=+1.849607e-04
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.809694e-03  λ=0.5  λ·raw=-1.404847e-03
+    mean          raw=-3.073479e-03  λ=2.5  λ·raw=-7.683698e-03
+    turnover      raw=+2.191522e-06  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+1.274197e-01  λ=0.5  λ·raw=+6.370986e-02
+    volatility    raw=+5.566933e-04  λ=0.3  λ·raw=+1.670080e-04
+    weight_path   raw=+1.116246e-11  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 2/50  train_loss=0.039563  val_loss=0.049216  lr=3.00e-04  |grad|_pre μ=2.401e-01 max=6.309e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.885670e-04  λ=0.3  λ·raw=+5.657011e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.512606e-03  λ=0.5  λ·raw=-1.256303e-03
+    mean          raw=-2.736632e-03  λ=2.5  λ·raw=-6.841581e-03
+    turnover      raw=+3.234424e-03  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+9.492013e-02  λ=0.5  λ·raw=+4.746007e-02
+    volatility    raw=+4.804528e-04  λ=0.3  λ·raw=+1.441358e-04
+    weight_path   raw=+9.683153e-06  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+5.563919e-04  λ=0.3  λ·raw=+1.669176e-04
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.692056e-03  λ=0.5  λ·raw=-1.346028e-03
+    mean          raw=-2.936104e-03  λ=2.5  λ·raw=-7.340261e-03
+    turnover      raw=+4.708581e-06  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+1.151634e-01  λ=0.5  λ·raw=+5.758170e-02
+    volatility    raw=+5.122355e-04  λ=0.3  λ·raw=+1.536707e-04
+    weight_path   raw=+5.067274e-11  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 3/50  train_loss=0.031807  val_loss=0.039524  lr=3.00e-04  |grad|_pre μ=3.035e-01 max=8.674e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.556518e-04  λ=0.3  λ·raw=+4.669554e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.356346e-03  λ=0.5  λ·raw=-1.178173e-03
+    mean          raw=-2.554169e-03  λ=2.5  λ·raw=-6.385422e-03
+    turnover      raw=+8.029012e-03  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.839677e-02  λ=0.5  λ·raw=+3.919839e-02
+    volatility    raw=+4.196952e-04  λ=0.3  λ·raw=+1.259086e-04
+    weight_path   raw=+5.437165e-05  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+4.635319e-04  λ=0.3  λ·raw=+1.390596e-04
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.489251e-03  λ=0.5  λ·raw=-1.244626e-03
+    mean          raw=-2.701673e-03  λ=2.5  λ·raw=-6.754183e-03
+    turnover      raw=+5.223854e-06  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+9.450296e-02  λ=0.5  λ·raw=+4.725148e-02
+    volatility    raw=+4.417327e-04  λ=0.3  λ·raw=+1.325198e-04
+    weight_path   raw=+6.156148e-11  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 4/50  train_loss=0.022216  val_loss=0.027332  lr=3.00e-04  |grad|_pre μ=2.853e-01 max=1.036e+00  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.109138e-04  λ=0.3  λ·raw=+3.327414e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.135964e-03  λ=0.5  λ·raw=-1.067982e-03
+    mean          raw=-2.299898e-03  λ=2.5  λ·raw=-5.749744e-03
+    turnover      raw=+1.462835e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.779619e-02  λ=0.5  λ·raw=+2.889810e-02
+    volatility    raw=+3.424088e-04  λ=0.3  λ·raw=+1.027226e-04
+    weight_path   raw=+1.746681e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+3.634722e-04  λ=0.3  λ·raw=+1.090417e-04
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-2.223855e-03  λ=0.5  λ·raw=-1.111928e-03
+    mean          raw=-2.399420e-03  λ=2.5  λ·raw=-5.998551e-03
+    turnover      raw=+2.474495e-06  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.844953e-02  λ=0.5  λ·raw=+3.422476e-02
+    volatility    raw=+3.608194e-04  λ=0.3  λ·raw=+1.082458e-04
+    weight_path   raw=+9.052519e-12  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 5/50  train_loss=0.014240  val_loss=0.014401  lr=3.00e-04  |grad|_pre μ=2.668e-01 max=1.077e+00  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+8.089721e-05  λ=0.3  λ·raw=+2.426916e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.897031e-03  λ=0.5  λ·raw=-9.485156e-04
+    mean          raw=-2.030203e-03  λ=2.5  λ·raw=-5.075508e-03
+    turnover      raw=+2.144566e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+4.031536e-02  λ=0.5  λ·raw=+2.015768e-02
+    volatility    raw=+2.739372e-04  λ=0.3  λ·raw=+8.218115e-05
+    weight_path   raw=+3.677013e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.822654e-04  λ=0.3  λ·raw=+8.467962e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.925716e-03  λ=0.5  λ·raw=-9.628582e-04
+    mean          raw=-2.065904e-03  λ=2.5  λ·raw=-5.164761e-03
+    turnover      raw=+9.135006e-06  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+4.071696e-02  λ=0.5  λ·raw=+2.035848e-02
+    volatility    raw=+2.845923e-04  λ=0.3  λ·raw=+8.537770e-05
+    weight_path   raw=+1.277680e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 6/50  train_loss=0.006205  val_loss=0.002667  lr=3.00e-04  |grad|_pre μ=2.453e-01 max=1.016e+00  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+8.409353e-05  λ=0.3  λ·raw=+2.522806e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.615992e-03  λ=0.5  λ·raw=-8.079958e-04
+    mean          raw=-1.720330e-03  λ=2.5  λ·raw=-4.300826e-03
+    turnover      raw=+2.785105e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+2.244953e-02  λ=0.5  λ·raw=+1.122477e-02
+    volatility    raw=+2.111736e-04  λ=0.3  λ·raw=+6.335210e-05
+    weight_path   raw=+6.190583e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.373445e-04  λ=0.3  λ·raw=+7.120333e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.616574e-03  λ=0.5  λ·raw=-8.082872e-04
+    mean          raw=-1.726691e-03  λ=2.5  λ·raw=-4.316728e-03
+    turnover      raw=+1.739813e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+1.530805e-02  λ=0.5  λ·raw=+7.654026e-03
+    volatility    raw=+2.211146e-04  λ=0.3  λ·raw=+6.633439e-05
+    weight_path   raw=+5.078840e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 7/50  train_loss=0.000847  val_loss=0.000115  lr=3.00e-04  |grad|_pre μ=1.103e-01 max=9.071e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.079937e-04  λ=0.3  λ·raw=+3.239812e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.376909e-03  λ=0.5  λ·raw=-6.884545e-04
+    mean          raw=-1.461776e-03  λ=2.5  λ·raw=-3.654439e-03
+    turnover      raw=+3.060066e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+1.021227e-02  λ=0.5  λ·raw=+5.106136e-03
+    volatility    raw=+1.699341e-04  λ=0.3  λ·raw=+5.098023e-05
+    weight_path   raw=+7.368188e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.352035e-04  λ=0.3  λ·raw=+7.056106e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.365391e-03  λ=0.5  λ·raw=-6.826955e-04
+    mean          raw=-1.455946e-03  λ=2.5  λ·raw=-3.639864e-03
+    turnover      raw=+2.188294e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+8.626103e-03  λ=0.5  λ·raw=+4.313052e-03
+    volatility    raw=+1.806181e-04  λ=0.3  λ·raw=+5.418542e-05
+    weight_path   raw=+8.177340e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 8/50  train_loss=-0.000304  val_loss=-0.000999  lr=3.00e-04  |grad|_pre μ=2.976e-02 max=1.124e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.490942e-04  λ=0.3  λ·raw=+4.472826e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.209033e-03  λ=0.5  λ·raw=-6.045167e-04
+    mean          raw=-1.283196e-03  λ=2.5  λ·raw=-3.207990e-03
+    turnover      raw=+3.030480e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.839082e-03  λ=0.5  λ·raw=+3.419541e-03
+    volatility    raw=+1.475775e-04  λ=0.3  λ·raw=+4.427325e-05
+    weight_path   raw=+7.644419e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.479629e-04  λ=0.3  λ·raw=+7.438888e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.236361e-03  λ=0.5  λ·raw=-6.181806e-04
+    mean          raw=-1.318542e-03  λ=2.5  λ·raw=-3.296354e-03
+    turnover      raw=+2.296256e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.583962e-03  λ=0.5  λ·raw=+2.791981e-03
+    volatility    raw=+1.635191e-04  λ=0.3  λ·raw=+4.905573e-05
+    weight_path   raw=+9.088890e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 9/50  train_loss=-0.000280  val_loss=-0.001205  lr=3.00e-04  |grad|_pre μ=2.817e-02 max=1.002e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.607698e-04  λ=0.3  λ·raw=+4.823094e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.183040e-03  λ=0.5  λ·raw=-5.915198e-04
+    mean          raw=-1.256151e-03  λ=2.5  λ·raw=-3.140377e-03
+    turnover      raw=+2.987882e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.720838e-03  λ=0.5  λ·raw=+3.360419e-03
+    volatility    raw=+1.454178e-04  λ=0.3  λ·raw=+4.362533e-05
+    weight_path   raw=+7.132921e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.517655e-04  λ=0.3  λ·raw=+7.552965e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.210488e-03  λ=0.5  λ·raw=-6.052442e-04
+    mean          raw=-1.291126e-03  λ=2.5  λ·raw=-3.227814e-03
+    turnover      raw=+2.259685e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.008270e-03  λ=0.5  λ·raw=+2.504135e-03
+    volatility    raw=+1.603856e-04  λ=0.3  λ·raw=+4.811568e-05
+    weight_path   raw=+8.812764e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 10/50  train_loss=-0.000009  val_loss=-0.001174  lr=3.00e-04  |grad|_pre μ=3.179e-02 max=1.439e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.623236e-04  λ=0.3  λ·raw=+4.869707e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.181765e-03  λ=0.5  λ·raw=-5.908826e-04
+    mean          raw=-1.254826e-03  λ=2.5  λ·raw=-3.137065e-03
+    turnover      raw=+3.027665e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.253309e-03  λ=0.5  λ·raw=+3.626655e-03
+    volatility    raw=+1.453030e-04  λ=0.3  λ·raw=+4.359091e-05
+    weight_path   raw=+7.510763e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.511465e-04  λ=0.3  λ·raw=+7.534396e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.214509e-03  λ=0.5  λ·raw=-6.072545e-04
+    mean          raw=-1.295383e-03  λ=2.5  λ·raw=-3.238458e-03
+    turnover      raw=+2.200342e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.097012e-03  λ=0.5  λ·raw=+2.548506e-03
+    volatility    raw=+1.608662e-04  λ=0.3  λ·raw=+4.825985e-05
+    weight_path   raw=+8.360156e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 11/50  train_loss=-0.000231  val_loss=-0.001077  lr=3.00e-04  |grad|_pre μ=2.861e-02 max=1.058e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.627373e-04  λ=0.3  λ·raw=+4.882119e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.175682e-03  λ=0.5  λ·raw=-5.878412e-04
+    mean          raw=-1.248185e-03  λ=2.5  λ·raw=-3.120463e-03
+    turnover      raw=+3.056580e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.770911e-03  λ=0.5  λ·raw=+3.385456e-03
+    volatility    raw=+1.440912e-04  λ=0.3  λ·raw=+4.322736e-05
+    weight_path   raw=+7.643117e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.493441e-04  λ=0.3  λ·raw=+7.480323e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.226623e-03  λ=0.5  λ·raw=-6.133113e-04
+    mean          raw=-1.308217e-03  λ=2.5  λ·raw=-3.270543e-03
+    turnover      raw=+2.137371e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.365988e-03  λ=0.5  λ·raw=+2.682994e-03
+    volatility    raw=+1.623282e-04  λ=0.3  λ·raw=+4.869846e-05
+    weight_path   raw=+7.879645e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 12/50  train_loss=-0.000074  val_loss=-0.000945  lr=3.00e-04  |grad|_pre μ=3.109e-02 max=1.331e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.555772e-04  λ=0.3  λ·raw=+4.667317e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.192593e-03  λ=0.5  λ·raw=-5.962963e-04
+    mean          raw=-1.265965e-03  λ=2.5  λ·raw=-3.164913e-03
+    turnover      raw=+2.912035e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.193396e-03  λ=0.5  λ·raw=+3.596698e-03
+    volatility    raw=+1.459306e-04  λ=0.3  λ·raw=+4.377919e-05
+    weight_path   raw=+6.963058e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.470570e-04  λ=0.3  λ·raw=+7.411710e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.242997e-03  λ=0.5  λ·raw=-6.214983e-04
+    mean          raw=-1.325580e-03  λ=2.5  λ·raw=-3.313951e-03
+    turnover      raw=+2.069449e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.733629e-03  λ=0.5  λ·raw=+2.866815e-03
+    volatility    raw=+1.643385e-04  λ=0.3  λ·raw=+4.930157e-05
+    weight_path   raw=+7.389114e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 13/50  train_loss=0.000417  val_loss=-0.000905  lr=3.00e-04  |grad|_pre μ=9.434e-02 max=8.213e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.583062e-04  λ=0.3  λ·raw=+4.749186e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.209753e-03  λ=0.5  λ·raw=-6.048764e-04
+    mean          raw=-1.284988e-03  λ=2.5  λ·raw=-3.212469e-03
+    turnover      raw=+3.107681e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+8.282972e-03  λ=0.5  λ·raw=+4.141486e-03
+    volatility    raw=+1.499251e-04  λ=0.3  λ·raw=+4.497753e-05
+    weight_path   raw=+7.801128e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.463988e-04  λ=0.3  λ·raw=+7.391964e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.247949e-03  λ=0.5  λ·raw=-6.239746e-04
+    mean          raw=-1.330836e-03  λ=2.5  λ·raw=-3.327090e-03
+    turnover      raw=+2.020986e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.845765e-03  λ=0.5  λ·raw=+2.922883e-03
+    volatility    raw=+1.649544e-04  λ=0.3  λ·raw=+4.948631e-05
+    weight_path   raw=+7.058171e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 14/50  train_loss=-0.000179  val_loss=-0.001410  lr=3.00e-04  |grad|_pre μ=2.779e-02 max=1.012e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.698704e-04  λ=0.3  λ·raw=+5.096113e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.156191e-03  λ=0.5  λ·raw=-5.780953e-04
+    mean          raw=-1.227785e-03  λ=2.5  λ·raw=-3.069461e-03
+    turnover      raw=+3.069102e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.750469e-03  λ=0.5  λ·raw=+3.375235e-03
+    volatility    raw=+1.422768e-04  λ=0.3  λ·raw=+4.268305e-05
+    weight_path   raw=+7.550377e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.561123e-04  λ=0.3  λ·raw=+7.683370e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.183980e-03  λ=0.5  λ·raw=-5.919898e-04
+    mean          raw=-1.263082e-03  λ=2.5  λ·raw=-3.157706e-03
+    turnover      raw=+2.065439e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+4.430771e-03  λ=0.5  λ·raw=+2.215385e-03
+    volatility    raw=+1.572762e-04  λ=0.3  λ·raw=+4.718286e-05
+    weight_path   raw=+7.366186e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 15/50  train_loss=0.000045  val_loss=-0.001448  lr=3.00e-04  |grad|_pre μ=3.143e-02 max=1.460e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.660819e-04  λ=0.3  λ·raw=+4.982457e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.168673e-03  λ=0.5  λ·raw=-5.843366e-04
+    mean          raw=-1.241161e-03  λ=2.5  λ·raw=-3.102903e-03
+    turnover      raw=+3.053641e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.278572e-03  λ=0.5  λ·raw=+3.639286e-03
+    volatility    raw=+1.441604e-04  λ=0.3  λ·raw=+4.324813e-05
+    weight_path   raw=+7.717387e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.569757e-04  λ=0.3  λ·raw=+7.709271e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.179027e-03  λ=0.5  λ·raw=-5.895136e-04
+    mean          raw=-1.257849e-03  λ=2.5  λ·raw=-3.144622e-03
+    turnover      raw=+2.033844e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+4.324267e-03  λ=0.5  λ·raw=+2.162134e-03
+    volatility    raw=+1.567066e-04  λ=0.3  λ·raw=+4.701198e-05
+    weight_path   raw=+7.146726e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 16/50  train_loss=-0.000222  val_loss=-0.001360  lr=3.00e-04  |grad|_pre μ=2.691e-02 max=9.239e-02  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.680188e-04  λ=0.3  λ·raw=+5.040563e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.154494e-03  λ=0.5  λ·raw=-5.772469e-04
+    mean          raw=-1.225917e-03  λ=2.5  λ·raw=-3.064792e-03
+    turnover      raw=+2.949358e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.653982e-03  λ=0.5  λ·raw=+3.326991e-03
+    volatility    raw=+1.419743e-04  λ=0.3  λ·raw=+4.259229e-05
+    weight_path   raw=+7.161853e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.549830e-04  λ=0.3  λ·raw=+7.649490e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.190604e-03  λ=0.5  λ·raw=-5.953019e-04
+    mean          raw=-1.270086e-03  λ=2.5  λ·raw=-3.175214e-03
+    turnover      raw=+1.989281e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+4.573981e-03  λ=0.5  λ·raw=+2.286990e-03
+    volatility    raw=+1.580436e-04  λ=0.3  λ·raw=+4.741309e-05
+    weight_path   raw=+6.835308e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 17/50  train_loss=-0.000232  val_loss=-0.001209  lr=3.00e-04  |grad|_pre μ=2.739e-02 max=9.549e-02  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.660773e-04  λ=0.3  λ·raw=+4.982320e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.162778e-03  λ=0.5  λ·raw=-5.813888e-04
+    mean          raw=-1.234712e-03  λ=2.5  λ·raw=-3.086779e-03
+    turnover      raw=+3.017178e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.687832e-03  λ=0.5  λ·raw=+3.343916e-03
+    volatility    raw=+1.430162e-04  λ=0.3  λ·raw=+4.290485e-05
+    weight_path   raw=+7.458133e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.518327e-04  λ=0.3  λ·raw=+7.554982e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.210060e-03  λ=0.5  λ·raw=-6.050300e-04
+    mean          raw=-1.290672e-03  λ=2.5  λ·raw=-3.226680e-03
+    turnover      raw=+1.937060e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+4.999022e-03  λ=0.5  λ·raw=+2.499511e-03
+    volatility    raw=+1.603346e-04  λ=0.3  λ·raw=+4.810037e-05
+    weight_path   raw=+6.484330e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 18/50  train_loss=-0.000157  val_loss=-0.001038  lr=3.00e-04  |grad|_pre μ=3.041e-02 max=1.256e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.631098e-04  λ=0.3  λ·raw=+4.893294e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.188876e-03  λ=0.5  λ·raw=-5.944378e-04
+    mean          raw=-1.262591e-03  λ=2.5  λ·raw=-3.156477e-03
+    turnover      raw=+3.138721e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.001673e-03  λ=0.5  λ·raw=+3.500837e-03
+    volatility    raw=+1.466833e-04  λ=0.3  λ·raw=+4.400499e-05
+    weight_path   raw=+8.012949e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.486491e-04  λ=0.3  λ·raw=+7.459473e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.231474e-03  λ=0.5  λ·raw=-6.157368e-04
+    mean          raw=-1.313359e-03  λ=2.5  λ·raw=-3.283398e-03
+    turnover      raw=+1.881233e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.474548e-03  λ=0.5  λ·raw=+2.737274e-03
+    volatility    raw=+1.629197e-04  λ=0.3  λ·raw=+4.887592e-05
+    weight_path   raw=+6.119874e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 19/50  train_loss=-0.000300  val_loss=-0.000868  lr=3.00e-04  |grad|_pre μ=2.991e-02 max=1.167e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.497301e-04  λ=0.3  λ·raw=+4.491903e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.205793e-03  λ=0.5  λ·raw=-6.028967e-04
+    mean          raw=-1.279780e-03  λ=2.5  λ·raw=-3.199449e-03
+    turnover      raw=+2.991941e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.826547e-03  λ=0.5  λ·raw=+3.413274e-03
+    volatility    raw=+1.471672e-04  λ=0.3  λ·raw=+4.415017e-05
+    weight_path   raw=+7.243740e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.458148e-04  λ=0.3  λ·raw=+7.374444e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.252447e-03  λ=0.5  λ·raw=-6.262236e-04
+    mean          raw=-1.335611e-03  λ=2.5  λ·raw=-3.339026e-03
+    turnover      raw=+1.820924e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.948077e-03  λ=0.5  λ·raw=+2.974038e-03
+    volatility    raw=+1.655168e-04  λ=0.3  λ·raw=+4.965503e-05
+    weight_path   raw=+5.734097e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 20/50  train_loss=-0.000040  val_loss=-0.000818  lr=3.00e-05  |grad|_pre μ=9.644e-02 max=8.310e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.528433e-04  λ=0.3  λ·raw=+4.585300e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.216039e-03  λ=0.5  λ·raw=-6.080193e-04
+    mean          raw=-1.291129e-03  λ=2.5  λ·raw=-3.227822e-03
+    turnover      raw=+3.104346e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.410536e-03  λ=0.5  λ·raw=+3.705268e-03
+    volatility    raw=+1.495238e-04  λ=0.3  λ·raw=+4.485715e-05
+    weight_path   raw=+7.713151e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.450443e-04  λ=0.3  λ·raw=+7.351330e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.258535e-03  λ=0.5  λ·raw=-6.292676e-04
+    mean          raw=-1.342075e-03  λ=2.5  λ·raw=-3.355186e-03
+    turnover      raw=+1.792956e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.086946e-03  λ=0.5  λ·raw=+3.043473e-03
+    volatility    raw=+1.662827e-04  λ=0.3  λ·raw=+4.988480e-05
+    weight_path   raw=+5.570099e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 21/50  train_loss=-0.000213  val_loss=-0.000882  lr=3.00e-05  |grad|_pre μ=3.192e-02 max=1.412e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.497041e-04  λ=0.3  λ·raw=+4.491124e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.223462e-03  λ=0.5  λ·raw=-6.117310e-04
+    mean          raw=-1.298837e-03  λ=2.5  λ·raw=-3.247091e-03
+    turnover      raw=+3.032820e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.111872e-03  λ=0.5  λ·raw=+3.555936e-03
+    volatility    raw=+1.500560e-04  λ=0.3  λ·raw=+4.501681e-05
+    weight_path   raw=+7.497117e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.460390e-04  λ=0.3  λ·raw=+7.381170e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.250710e-03  λ=0.5  λ·raw=-6.253552e-04
+    mean          raw=-1.333767e-03  λ=2.5  λ·raw=-3.334417e-03
+    turnover      raw=+1.807570e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.908579e-03  λ=0.5  λ·raw=+2.954289e-03
+    volatility    raw=+1.652992e-04  λ=0.3  λ·raw=+4.958977e-05
+    weight_path   raw=+5.666246e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 22/50  train_loss=-0.000330  val_loss=-0.000888  lr=3.00e-05  |grad|_pre μ=2.891e-02 max=1.064e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.574587e-04  λ=0.3  λ·raw=+4.723760e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.198462e-03  λ=0.5  λ·raw=-5.992308e-04
+    mean          raw=-1.272443e-03  λ=2.5  λ·raw=-3.181107e-03
+    turnover      raw=+3.071914e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.717538e-03  λ=0.5  λ·raw=+3.358769e-03
+    volatility    raw=+1.471825e-04  λ=0.3  λ·raw=+4.415474e-05
+    weight_path   raw=+7.449789e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.461378e-04  λ=0.3  λ·raw=+7.384134e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.249950e-03  λ=0.5  λ·raw=-6.249748e-04
+    mean          raw=-1.332959e-03  λ=2.5  λ·raw=-3.332398e-03
+    turnover      raw=+1.808401e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.891293e-03  λ=0.5  λ·raw=+2.945647e-03
+    volatility    raw=+1.652041e-04  λ=0.3  λ·raw=+4.956124e-05
+    weight_path   raw=+5.670721e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 23/50  train_loss=-0.000218  val_loss=-0.000876  lr=3.00e-05  |grad|_pre μ=3.049e-02 max=1.237e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.534975e-04  λ=0.3  λ·raw=+4.604925e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.204958e-03  λ=0.5  λ·raw=-6.024790e-04
+    mean          raw=-1.279151e-03  λ=2.5  λ·raw=-3.197878e-03
+    turnover      raw=+2.995841e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.983986e-03  λ=0.5  λ·raw=+3.491993e-03
+    volatility    raw=+1.476296e-04  λ=0.3  λ·raw=+4.428889e-05
+    weight_path   raw=+7.346204e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.459502e-04  λ=0.3  λ·raw=+7.378505e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.251397e-03  λ=0.5  λ·raw=-6.256983e-04
+    mean          raw=-1.334495e-03  λ=2.5  λ·raw=-3.336237e-03
+    turnover      raw=+1.804234e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.924175e-03  λ=0.5  λ·raw=+2.962088e-03
+    volatility    raw=+1.653851e-04  λ=0.3  λ·raw=+4.961553e-05
+    weight_path   raw=+5.648196e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 24/50  train_loss=-0.000269  val_loss=-0.000872  lr=3.00e-05  |grad|_pre μ=9.268e-02 max=8.311e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.500832e-04  λ=0.3  λ·raw=+4.502497e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.208366e-03  λ=0.5  λ·raw=-6.041829e-04
+    mean          raw=-1.282601e-03  λ=2.5  λ·raw=-3.206503e-03
+    turnover      raw=+3.020873e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.904682e-03  λ=0.5  λ·raw=+3.452341e-03
+    volatility    raw=+1.477192e-04  λ=0.3  λ·raw=+4.431577e-05
+    weight_path   raw=+7.336778e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.458788e-04  λ=0.3  λ·raw=+7.376362e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.251951e-03  λ=0.5  λ·raw=-6.259756e-04
+    mean          raw=-1.335084e-03  λ=2.5  λ·raw=-3.337710e-03
+    turnover      raw=+1.802631e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.936801e-03  λ=0.5  λ·raw=+2.968401e-03
+    volatility    raw=+1.654546e-04  λ=0.3  λ·raw=+4.963638e-05
+    weight_path   raw=+5.640140e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 25/50  train_loss=-0.000060  val_loss=-0.000936  lr=3.00e-06  |grad|_pre μ=3.243e-02 max=1.485e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.477916e-04  λ=0.3  λ·raw=+4.433749e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.219818e-03  λ=0.5  λ·raw=-6.099089e-04
+    mean          raw=-1.294772e-03  λ=2.5  λ·raw=-3.236930e-03
+    turnover      raw=+2.996597e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.394892e-03  λ=0.5  λ·raw=+3.697446e-03
+    volatility    raw=+1.492114e-04  λ=0.3  λ·raw=+4.476341e-05
+    weight_path   raw=+7.464709e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469140e-04  λ=0.3  λ·raw=+7.407419e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244066e-03  λ=0.5  λ·raw=-6.220329e-04
+    mean          raw=-1.326715e-03  λ=2.5  λ·raw=-3.316787e-03
+    turnover      raw=+1.817592e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.757938e-03  λ=0.5  λ·raw=+2.878969e-03
+    volatility    raw=+1.644712e-04  λ=0.3  λ·raw=+4.934137e-05
+    weight_path   raw=+5.733250e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 26/50  train_loss=-0.000080  val_loss=-0.000937  lr=3.00e-06  |grad|_pre μ=3.190e-02 max=1.417e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.565049e-04  λ=0.3  λ·raw=+4.695147e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.201271e-03  λ=0.5  λ·raw=-6.006356e-04
+    mean          raw=-1.275434e-03  λ=2.5  λ·raw=-3.188585e-03
+    turnover      raw=+3.016068e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.235219e-03  λ=0.5  λ·raw=+3.617610e-03
+    volatility    raw=+1.475801e-04  λ=0.3  λ·raw=+4.427405e-05
+    weight_path   raw=+7.392306e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469268e-04  λ=0.3  λ·raw=+7.407803e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.243972e-03  λ=0.5  λ·raw=-6.219859e-04
+    mean          raw=-1.326615e-03  λ=2.5  λ·raw=-3.316538e-03
+    turnover      raw=+1.817796e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.755822e-03  λ=0.5  λ·raw=+2.877911e-03
+    volatility    raw=+1.644595e-04  λ=0.3  λ·raw=+4.933786e-05
+    weight_path   raw=+5.734855e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 27/50  train_loss=-0.000167  val_loss=-0.000936  lr=3.00e-06  |grad|_pre μ=3.052e-02 max=1.274e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.623790e-04  λ=0.3  λ·raw=+4.871372e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.196090e-03  λ=0.5  λ·raw=-5.980451e-04
+    mean          raw=-1.270238e-03  λ=2.5  λ·raw=-3.175595e-03
+    turnover      raw=+3.099402e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.026464e-03  λ=0.5  λ·raw=+3.513232e-03
+    volatility    raw=+1.475559e-04  λ=0.3  λ·raw=+4.426679e-05
+    weight_path   raw=+7.889755e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469099e-04  λ=0.3  λ·raw=+7.407296e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244096e-03  λ=0.5  λ·raw=-6.220480e-04
+    mean          raw=-1.326747e-03  λ=2.5  λ·raw=-3.316868e-03
+    turnover      raw=+1.817333e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.758623e-03  λ=0.5  λ·raw=+2.879312e-03
+    volatility    raw=+1.644750e-04  λ=0.3  λ·raw=+4.934249e-05
+    weight_path   raw=+5.731752e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 28/50  train_loss=-0.000102  val_loss=-0.000935  lr=3.00e-06  |grad|_pre μ=3.114e-02 max=1.334e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.600023e-04  λ=0.3  λ·raw=+4.800071e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.188942e-03  λ=0.5  λ·raw=-5.944709e-04
+    mean          raw=-1.262345e-03  λ=2.5  λ·raw=-3.155863e-03
+    turnover      raw=+3.016503e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.112833e-03  λ=0.5  λ·raw=+3.556417e-03
+    volatility    raw=+1.460090e-04  λ=0.3  λ·raw=+4.380271e-05
+    weight_path   raw=+7.391303e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468841e-04  λ=0.3  λ·raw=+7.406523e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244289e-03  λ=0.5  λ·raw=-6.221446e-04
+    mean          raw=-1.326952e-03  λ=2.5  λ·raw=-3.317380e-03
+    turnover      raw=+1.816784e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.762994e-03  λ=0.5  λ·raw=+2.881497e-03
+    volatility    raw=+1.644989e-04  λ=0.3  λ·raw=+4.934969e-05
+    weight_path   raw=+5.729184e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 29/50  train_loss=-0.000282  val_loss=-0.000933  lr=3.00e-06  |grad|_pre μ=2.966e-02 max=1.159e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.603793e-04  λ=0.3  λ·raw=+4.811380e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.203745e-03  λ=0.5  λ·raw=-6.018723e-04
+    mean          raw=-1.278383e-03  λ=2.5  λ·raw=-3.195958e-03
+    turnover      raw=+2.961176e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.847168e-03  λ=0.5  λ·raw=+3.423584e-03
+    volatility    raw=+1.485832e-04  λ=0.3  λ·raw=+4.457497e-05
+    weight_path   raw=+7.069736e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468551e-04  λ=0.3  λ·raw=+7.405654e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244507e-03  λ=0.5  λ·raw=-6.222535e-04
+    mean          raw=-1.327183e-03  λ=2.5  λ·raw=-3.317958e-03
+    turnover      raw=+1.816373e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.767922e-03  λ=0.5  λ·raw=+2.883961e-03
+    volatility    raw=+1.645260e-04  λ=0.3  λ·raw=+4.935780e-05
+    weight_path   raw=+5.726086e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 30/50  train_loss=-0.000081  val_loss=-0.000931  lr=1.00e-06  |grad|_pre μ=3.177e-02 max=1.394e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.516796e-04  λ=0.3  λ·raw=+4.550389e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.200524e-03  λ=0.5  λ·raw=-6.002620e-04
+    mean          raw=-1.274151e-03  λ=2.5  λ·raw=-3.185377e-03
+    turnover      raw=+3.034189e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.230101e-03  λ=0.5  λ·raw=+3.615050e-03
+    volatility    raw=+1.464362e-04  λ=0.3  λ·raw=+4.393086e-05
+    weight_path   raw=+7.541412e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468242e-04  λ=0.3  λ·raw=+7.404726e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244739e-03  λ=0.5  λ·raw=-6.223697e-04
+    mean          raw=-1.327429e-03  λ=2.5  λ·raw=-3.318574e-03
+    turnover      raw=+1.816043e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.773177e-03  λ=0.5  λ·raw=+2.886588e-03
+    volatility    raw=+1.645548e-04  λ=0.3  λ·raw=+4.936645e-05
+    weight_path   raw=+5.723998e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 31/50  train_loss=-0.000212  val_loss=-0.000931  lr=1.00e-06  |grad|_pre μ=9.352e-02 max=8.199e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.511967e-04  λ=0.3  λ·raw=+4.535902e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.213093e-03  λ=0.5  λ·raw=-6.065467e-04
+    mean          raw=-1.287802e-03  λ=2.5  λ·raw=-3.219504e-03
+    turnover      raw=+3.146564e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.048455e-03  λ=0.5  λ·raw=+3.524228e-03
+    volatility    raw=+1.487066e-04  λ=0.3  λ·raw=+4.461199e-05
+    weight_path   raw=+8.047171e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468214e-04  λ=0.3  λ·raw=+7.404641e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244760e-03  λ=0.5  λ·raw=-6.223801e-04
+    mean          raw=-1.327452e-03  λ=2.5  λ·raw=-3.318629e-03
+    turnover      raw=+1.815471e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.773644e-03  λ=0.5  λ·raw=+2.886822e-03
+    volatility    raw=+1.645574e-04  λ=0.3  λ·raw=+4.936723e-05
+    weight_path   raw=+5.720718e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 32/50  train_loss=-0.000371  val_loss=-0.000933  lr=1.00e-06  |grad|_pre μ=2.812e-02 max=9.921e-02  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.497481e-04  λ=0.3  λ·raw=+4.492442e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.205911e-03  λ=0.5  λ·raw=-6.029555e-04
+    mean          raw=-1.279841e-03  λ=2.5  λ·raw=-3.199603e-03
+    turnover      raw=+2.976162e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.684522e-03  λ=0.5  λ·raw=+3.342261e-03
+    volatility    raw=+1.470441e-04  λ=0.3  λ·raw=+4.411323e-05
+    weight_path   raw=+7.164706e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468593e-04  λ=0.3  λ·raw=+7.405778e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244475e-03  λ=0.5  λ·raw=-6.222377e-04
+    mean          raw=-1.327149e-03  λ=2.5  λ·raw=-3.317874e-03
+    turnover      raw=+1.816350e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.767206e-03  λ=0.5  λ·raw=+2.883603e-03
+    volatility    raw=+1.645221e-04  λ=0.3  λ·raw=+4.935662e-05
+    weight_path   raw=+5.724977e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 33/50  train_loss=-0.000049  val_loss=-0.000933  lr=1.00e-06  |grad|_pre μ=3.279e-02 max=1.513e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.627556e-04  λ=0.3  λ·raw=+4.882668e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.201064e-03  λ=0.5  λ·raw=-6.005320e-04
+    mean          raw=-1.275686e-03  λ=2.5  λ·raw=-3.189215e-03
+    turnover      raw=+3.015071e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.294918e-03  λ=0.5  λ·raw=+3.647459e-03
+    volatility    raw=+1.485725e-04  λ=0.3  λ·raw=+4.457175e-05
+    weight_path   raw=+7.542427e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468622e-04  λ=0.3  λ·raw=+7.405865e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244453e-03  λ=0.5  λ·raw=-6.222267e-04
+    mean          raw=-1.327126e-03  λ=2.5  λ·raw=-3.317815e-03
+    turnover      raw=+1.815897e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.766710e-03  λ=0.5  λ·raw=+2.883355e-03
+    volatility    raw=+1.645193e-04  λ=0.3  λ·raw=+4.935580e-05
+    weight_path   raw=+5.722908e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 34/50  train_loss=-0.000210  val_loss=-0.000933  lr=1.00e-06  |grad|_pre μ=3.099e-02 max=1.300e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.539102e-04  λ=0.3  λ·raw=+4.617307e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.202023e-03  λ=0.5  λ·raw=-6.010116e-04
+    mean          raw=-1.275935e-03  λ=2.5  λ·raw=-3.189837e-03
+    turnover      raw=+3.043725e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.980444e-03  λ=0.5  λ·raw=+3.490222e-03
+    volatility    raw=+1.470190e-04  λ=0.3  λ·raw=+4.410571e-05
+    weight_path   raw=+7.348386e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468565e-04  λ=0.3  λ·raw=+7.405695e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244497e-03  λ=0.5  λ·raw=-6.222483e-04
+    mean          raw=-1.327172e-03  λ=2.5  λ·raw=-3.317930e-03
+    turnover      raw=+1.815843e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.767683e-03  λ=0.5  λ·raw=+2.883842e-03
+    volatility    raw=+1.645247e-04  λ=0.3  λ·raw=+4.935741e-05
+    weight_path   raw=+5.723794e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 35/50  train_loss=-0.000185  val_loss=-0.000932  lr=1.00e-06  |grad|_pre μ=3.154e-02 max=1.366e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.508247e-04  λ=0.3  λ·raw=+4.524741e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.216354e-03  λ=0.5  λ·raw=-6.081771e-04
+    mean          raw=-1.291281e-03  λ=2.5  λ·raw=-3.228203e-03
+    turnover      raw=+3.119485e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.123517e-03  λ=0.5  λ·raw=+3.561759e-03
+    volatility    raw=+1.491885e-04  λ=0.3  λ·raw=+4.475656e-05
+    weight_path   raw=+7.713937e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468473e-04  λ=0.3  λ·raw=+7.405420e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244564e-03  λ=0.5  λ·raw=-6.222822e-04
+    mean          raw=-1.327244e-03  λ=2.5  λ·raw=-3.318109e-03
+    turnover      raw=+1.815972e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.769213e-03  λ=0.5  λ·raw=+2.884607e-03
+    volatility    raw=+1.645331e-04  λ=0.3  λ·raw=+4.935993e-05
+    weight_path   raw=+5.723936e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 36/50  train_loss=-0.000323  val_loss=-0.000932  lr=1.00e-06  |grad|_pre μ=2.939e-02 max=1.115e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.555759e-04  λ=0.3  λ·raw=+4.667276e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.205526e-03  λ=0.5  λ·raw=-6.027628e-04
+    mean          raw=-1.280035e-03  λ=2.5  λ·raw=-3.200086e-03
+    turnover      raw=+3.068553e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.776820e-03  λ=0.5  λ·raw=+3.388410e-03
+    volatility    raw=+1.483250e-04  λ=0.3  λ·raw=+4.449749e-05
+    weight_path   raw=+7.602277e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468368e-04  λ=0.3  λ·raw=+7.405104e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244644e-03  λ=0.5  λ·raw=-6.223220e-04
+    mean          raw=-1.327328e-03  λ=2.5  λ·raw=-3.318321e-03
+    turnover      raw=+1.815645e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.771011e-03  λ=0.5  λ·raw=+2.885506e-03
+    volatility    raw=+1.645430e-04  λ=0.3  λ·raw=+4.936290e-05
+    weight_path   raw=+5.723459e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 37/50  train_loss=-0.000192  val_loss=-0.000931  lr=1.00e-06  |grad|_pre μ=3.065e-02 max=1.291e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.534547e-04  λ=0.3  λ·raw=+4.603641e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.207846e-03  λ=0.5  λ·raw=-6.039232e-04
+    mean          raw=-1.282350e-03  λ=2.5  λ·raw=-3.205876e-03
+    turnover      raw=+2.972909e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.054637e-03  λ=0.5  λ·raw=+3.527318e-03
+    volatility    raw=+1.482966e-04  λ=0.3  λ·raw=+4.448898e-05
+    weight_path   raw=+7.126264e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468250e-04  λ=0.3  λ·raw=+7.404750e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244733e-03  λ=0.5  λ·raw=-6.223665e-04
+    mean          raw=-1.327423e-03  λ=2.5  λ·raw=-3.318557e-03
+    turnover      raw=+1.815289e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.773038e-03  λ=0.5  λ·raw=+2.886519e-03
+    volatility    raw=+1.645540e-04  λ=0.3  λ·raw=+4.936621e-05
+    weight_path   raw=+5.719561e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 38/50  train_loss=0.000039  val_loss=-0.000930  lr=1.00e-06  |grad|_pre μ=3.375e-02 max=1.666e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.558016e-04  λ=0.3  λ·raw=+4.674049e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.204462e-03  λ=0.5  λ·raw=-6.022312e-04
+    mean          raw=-1.278828e-03  λ=2.5  λ·raw=-3.197070e-03
+    turnover      raw=+3.045634e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.493583e-03  λ=0.5  λ·raw=+3.746791e-03
+    volatility    raw=+1.479869e-04  λ=0.3  λ·raw=+4.439606e-05
+    weight_path   raw=+7.504019e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468140e-04  λ=0.3  λ·raw=+7.404422e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244815e-03  λ=0.5  λ·raw=-6.224077e-04
+    mean          raw=-1.327510e-03  λ=2.5  λ·raw=-3.318776e-03
+    turnover      raw=+1.815454e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.774895e-03  λ=0.5  λ·raw=+2.887448e-03
+    volatility    raw=+1.645643e-04  λ=0.3  λ·raw=+4.936929e-05
+    weight_path   raw=+5.718962e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 39/50  train_loss=-0.000281  val_loss=-0.000930  lr=1.00e-06  |grad|_pre μ=9.442e-02 max=8.264e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.504745e-04  λ=0.3  λ·raw=+4.514235e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.210197e-03  λ=0.5  λ·raw=-6.050983e-04
+    mean          raw=-1.284670e-03  λ=2.5  λ·raw=-3.211676e-03
+    turnover      raw=+3.097333e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.892373e-03  λ=0.5  λ·raw=+3.446187e-03
+    volatility    raw=+1.482556e-04  λ=0.3  λ·raw=+4.447669e-05
+    weight_path   raw=+7.843539e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468115e-04  λ=0.3  λ·raw=+7.404345e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244834e-03  λ=0.5  λ·raw=-6.224171e-04
+    mean          raw=-1.327530e-03  λ=2.5  λ·raw=-3.318826e-03
+    turnover      raw=+1.815190e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.775323e-03  λ=0.5  λ·raw=+2.887661e-03
+    volatility    raw=+1.645666e-04  λ=0.3  λ·raw=+4.936999e-05
+    weight_path   raw=+5.720346e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 40/50  train_loss=-0.000334  val_loss=-0.000933  lr=1.00e-06  |grad|_pre μ=2.941e-02 max=1.110e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.516073e-04  λ=0.3  λ·raw=+4.548218e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.209811e-03  λ=0.5  λ·raw=-6.049055e-04
+    mean          raw=-1.284264e-03  λ=2.5  λ·raw=-3.210659e-03
+    turnover      raw=+3.049867e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.782825e-03  λ=0.5  λ·raw=+3.391412e-03
+    volatility    raw=+1.481546e-04  λ=0.3  λ·raw=+4.444639e-05
+    weight_path   raw=+7.490335e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468527e-04  λ=0.3  λ·raw=+7.405581e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244525e-03  λ=0.5  λ·raw=-6.222625e-04
+    mean          raw=-1.327202e-03  λ=2.5  λ·raw=-3.318006e-03
+    turnover      raw=+1.815205e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.768329e-03  λ=0.5  λ·raw=+2.884164e-03
+    volatility    raw=+1.645282e-04  λ=0.3  λ·raw=+4.935847e-05
+    weight_path   raw=+5.721073e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 41/50  train_loss=-0.000147  val_loss=-0.000933  lr=1.00e-06  |grad|_pre μ=3.142e-02 max=1.357e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.617798e-04  λ=0.3  λ·raw=+4.853395e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.197464e-03  λ=0.5  λ·raw=-5.987320e-04
+    mean          raw=-1.271660e-03  λ=2.5  λ·raw=-3.179150e-03
+    turnover      raw=+3.013105e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.075752e-03  λ=0.5  λ·raw=+3.537876e-03
+    volatility    raw=+1.476360e-04  λ=0.3  λ·raw=+4.429082e-05
+    weight_path   raw=+7.303522e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468559e-04  λ=0.3  λ·raw=+7.405678e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244502e-03  λ=0.5  λ·raw=-6.222508e-04
+    mean          raw=-1.327177e-03  λ=2.5  λ·raw=-3.317943e-03
+    turnover      raw=+1.814882e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.767792e-03  λ=0.5  λ·raw=+2.883896e-03
+    volatility    raw=+1.645253e-04  λ=0.3  λ·raw=+4.935759e-05
+    weight_path   raw=+5.719902e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 42/50  train_loss=-0.000207  val_loss=-0.000932  lr=1.00e-06  |grad|_pre μ=2.968e-02 max=1.152e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.643433e-04  λ=0.3  λ·raw=+4.930300e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.180828e-03  λ=0.5  λ·raw=-5.904142e-04
+    mean          raw=-1.253776e-03  λ=2.5  λ·raw=-3.134439e-03
+    turnover      raw=+2.981849e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.850690e-03  λ=0.5  λ·raw=+3.425345e-03
+    volatility    raw=+1.450175e-04  λ=0.3  λ·raw=+4.350526e-05
+    weight_path   raw=+7.200942e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468483e-04  λ=0.3  λ·raw=+7.405448e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244558e-03  λ=0.5  λ·raw=-6.222791e-04
+    mean          raw=-1.327237e-03  λ=2.5  λ·raw=-3.318093e-03
+    turnover      raw=+1.815164e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.769074e-03  λ=0.5  λ·raw=+2.884537e-03
+    volatility    raw=+1.645323e-04  λ=0.3  λ·raw=+4.935970e-05
+    weight_path   raw=+5.719893e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 43/50  train_loss=-0.000305  val_loss=-0.000932  lr=1.00e-06  |grad|_pre μ=9.347e-02 max=8.140e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.491109e-04  λ=0.3  λ·raw=+4.473326e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.209322e-03  λ=0.5  λ·raw=-6.046612e-04
+    mean          raw=-1.283641e-03  λ=2.5  λ·raw=-3.209103e-03
+    turnover      raw=+2.997598e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.838592e-03  λ=0.5  λ·raw=+3.419296e-03
+    volatility    raw=+1.479242e-04  λ=0.3  λ·raw=+4.437727e-05
+    weight_path   raw=+7.248650e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468453e-04  λ=0.3  λ·raw=+7.405360e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244580e-03  λ=0.5  λ·raw=-6.222902e-04
+    mean          raw=-1.327261e-03  λ=2.5  λ·raw=-3.318152e-03
+    turnover      raw=+1.815497e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.769581e-03  λ=0.5  λ·raw=+2.884790e-03
+    volatility    raw=+1.645351e-04  λ=0.3  λ·raw=+4.936053e-05
+    weight_path   raw=+5.721016e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 44/50  train_loss=-0.000124  val_loss=-0.000935  lr=1.00e-06  |grad|_pre μ=9.356e-02 max=8.192e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.481734e-04  λ=0.3  λ·raw=+4.445201e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.209654e-03  λ=0.5  λ·raw=-6.048272e-04
+    mean          raw=-1.283847e-03  λ=2.5  λ·raw=-3.209618e-03
+    turnover      raw=+3.034502e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.203365e-03  λ=0.5  λ·raw=+3.601683e-03
+    volatility    raw=+1.476170e-04  λ=0.3  λ·raw=+4.428510e-05
+    weight_path   raw=+7.239475e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.468952e-04  λ=0.3  λ·raw=+7.406857e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.244206e-03  λ=0.5  λ·raw=-6.221030e-04
+    mean          raw=-1.326864e-03  λ=2.5  λ·raw=-3.317160e-03
+    turnover      raw=+1.816019e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.761107e-03  λ=0.5  λ·raw=+2.880553e-03
+    volatility    raw=+1.644886e-04  λ=0.3  λ·raw=+4.934659e-05
+    weight_path   raw=+5.723892e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 45/50  train_loss=-0.000120  val_loss=-0.000939  lr=1.00e-06  |grad|_pre μ=3.165e-02 max=1.418e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.504464e-04  λ=0.3  λ·raw=+4.513392e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.206403e-03  λ=0.5  λ·raw=-6.032016e-04
+    mean          raw=-1.280495e-03  λ=2.5  λ·raw=-3.201237e-03
+    turnover      raw=+3.093419e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.189952e-03  λ=0.5  λ·raw=+3.594976e-03
+    volatility    raw=+1.473938e-04  λ=0.3  λ·raw=+4.421815e-05
+    weight_path   raw=+7.736639e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469525e-04  λ=0.3  λ·raw=+7.408576e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.243779e-03  λ=0.5  λ·raw=-6.218894e-04
+    mean          raw=-1.326410e-03  λ=2.5  λ·raw=-3.316026e-03
+    turnover      raw=+1.816939e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.751461e-03  λ=0.5  λ·raw=+2.875730e-03
+    volatility    raw=+1.644356e-04  λ=0.3  λ·raw=+4.933068e-05
+    weight_path   raw=+5.730986e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 46/50  train_loss=-0.000135  val_loss=-0.000939  lr=1.00e-06  |grad|_pre μ=3.156e-02 max=1.382e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.510786e-04  λ=0.3  λ·raw=+4.532357e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.201136e-03  λ=0.5  λ·raw=-6.005680e-04
+    mean          raw=-1.274933e-03  λ=2.5  λ·raw=-3.187333e-03
+    turnover      raw=+2.980030e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.126304e-03  λ=0.5  λ·raw=+3.563152e-03
+    volatility    raw=+1.468472e-04  λ=0.3  λ·raw=+4.405417e-05
+    weight_path   raw=+7.283171e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469619e-04  λ=0.3  λ·raw=+7.408857e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.243709e-03  λ=0.5  λ·raw=-6.218546e-04
+    mean          raw=-1.326336e-03  λ=2.5  λ·raw=-3.315841e-03
+    turnover      raw=+1.816676e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.749881e-03  λ=0.5  λ·raw=+2.874941e-03
+    volatility    raw=+1.644270e-04  λ=0.3  λ·raw=+4.932809e-05
+    weight_path   raw=+5.729472e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 47/50  train_loss=-0.000201  val_loss=-0.000939  lr=1.00e-06  |grad|_pre μ=3.042e-02 max=1.248e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.502081e-04  λ=0.3  λ·raw=+4.506243e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.199357e-03  λ=0.5  λ·raw=-5.996785e-04
+    mean          raw=-1.272946e-03  λ=2.5  λ·raw=-3.182365e-03
+    turnover      raw=+2.999519e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.983988e-03  λ=0.5  λ·raw=+3.491994e-03
+    volatility    raw=+1.463939e-04  λ=0.3  λ·raw=+4.391816e-05
+    weight_path   raw=+7.309470e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469564e-04  λ=0.3  λ·raw=+7.408692e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.243749e-03  λ=0.5  λ·raw=-6.218746e-04
+    mean          raw=-1.326379e-03  λ=2.5  λ·raw=-3.315948e-03
+    turnover      raw=+1.816851e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.750795e-03  λ=0.5  λ·raw=+2.875398e-03
+    volatility    raw=+1.644319e-04  λ=0.3  λ·raw=+4.932958e-05
+    weight_path   raw=+5.730115e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 48/50  train_loss=-0.000096  val_loss=-0.000938  lr=1.00e-06  |grad|_pre μ=3.212e-02 max=1.447e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.536712e-04  λ=0.3  λ·raw=+4.610135e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.212757e-03  λ=0.5  λ·raw=-6.063784e-04
+    mean          raw=-1.287808e-03  λ=2.5  λ·raw=-3.219520e-03
+    turnover      raw=+3.016763e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+7.277124e-03  λ=0.5  λ·raw=+3.638562e-03
+    volatility    raw=+1.495156e-04  λ=0.3  λ·raw=+4.485469e-05
+    weight_path   raw=+7.199411e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469465e-04  λ=0.3  λ·raw=+7.408396e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.243823e-03  λ=0.5  λ·raw=-6.219115e-04
+    mean          raw=-1.326457e-03  λ=2.5  λ·raw=-3.316143e-03
+    turnover      raw=+1.816268e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.752454e-03  λ=0.5  λ·raw=+2.876227e-03
+    volatility    raw=+1.644411e-04  λ=0.3  λ·raw=+4.933233e-05
+    weight_path   raw=+5.726509e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 49/50  train_loss=-0.000293  val_loss=-0.000938  lr=1.00e-06  |grad|_pre μ=2.927e-02 max=1.082e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.572571e-04  λ=0.3  λ·raw=+4.717712e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.201623e-03  λ=0.5  λ·raw=-6.008115e-04
+    mean          raw=-1.275837e-03  λ=2.5  λ·raw=-3.189591e-03
+    turnover      raw=+3.065660e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+6.811048e-03  λ=0.5  λ·raw=+3.405524e-03
+    volatility    raw=+1.476566e-04  λ=0.3  λ·raw=+4.429698e-05
+    weight_path   raw=+7.674719e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469353e-04  λ=0.3  λ·raw=+7.408059e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.243907e-03  λ=0.5  λ·raw=-6.219533e-04
+    mean          raw=-1.326546e-03  λ=2.5  λ·raw=-3.316365e-03
+    turnover      raw=+1.816480e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.754342e-03  λ=0.5  λ·raw=+2.877171e-03
+    volatility    raw=+1.644515e-04  λ=0.3  λ·raw=+4.933544e-05
+    weight_path   raw=+5.727400e-10  λ=0  λ·raw=+0.000000e+00
+  [IPO] epoch 50/50  train_loss=0.000247  val_loss=-0.000938  lr=1.00e-06  |grad|_pre μ=9.836e-02 max=8.545e-01  nan_batches(loss/grad)=0/0
+  [train term breakdown]
+    cvar          raw=+1.488535e-04  λ=0.3  λ·raw=+4.465604e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.223644e-03  λ=0.5  λ·raw=-6.118221e-04
+    mean          raw=-1.299217e-03  λ=2.5  λ·raw=-3.248043e-03
+    turnover      raw=+3.052262e-02  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+8.033214e-03  λ=0.5  λ·raw=+4.016607e-03
+    volatility    raw=+1.505499e-04  λ=0.3  λ·raw=+4.516496e-05
+    weight_path   raw=+7.522506e-04  λ=0  λ·raw=+0.000000e+00
+  [val term breakdown]
+    cvar          raw=+2.469317e-04  λ=0.3  λ·raw=+7.407953e-05
+    diversify     raw=+0.000000e+00  λ=0  λ·raw=+0.000000e+00
+    log_growth    raw=-1.243934e-03  λ=0.5  λ·raw=-6.219670e-04
+    mean          raw=-1.326575e-03  λ=2.5  λ·raw=-3.316438e-03
+    turnover      raw=+1.816557e-05  λ=0  λ·raw=+0.000000e+00
+    vol_excess    raw=+5.754958e-03  λ=0.5  λ·raw=+2.877479e-03
+    volatility    raw=+1.644548e-04  λ=0.3  λ·raw=+4.933645e-05
+    weight_path   raw=+5.727383e-10  λ=0  λ·raw=+0.000000e+00
+[IPO] Training finished  epochs_completed=50  best_val_loss=-0.001448
+Trained for 50 epochs
+Saved training history to /Users/shivani/Downloads/stat_4830_project/results/ipo_optimizer_training_history.json and /Users/shivani/Downloads/stat_4830_project/results/ipo_optimizer_training_history_gru.json
+Saved rolling train/val loss plot to /Users/shivani/Downloads/stat_4830_project/figures/ipo_optimizer/gru/loss_train_val_rolling.png
+Saved semilogy loss plot to /Users/shivani/Downloads/stat_4830_project/figures/ipo_optimizer/gru/loss_semilogy.png
+Exported weights to /Users/shivani/Downloads/stat_4830_project/results/ipo_optimizer_weights.csv
+Exported summary to /Users/shivani/Downloads/stat_4830_project/results/ipo_optimizer_summary.txt
+Model suggests moderate or low IPO allocation.
+Suggested position scale: 0.28
+Metrics: Sharpe=1.54, MaxDD=-21.25%
+[IPO] Saved per-window returns for replotting: ipo_optimizer_returns_val.csv
+[IPO] Copied weights to ipo_optimizer_weights_val.csv (for compare / replot scripts)
+Saved returns vs 50/50 plot to /Users/shivani/Downloads/stat_4830_project/figures/ipo_optimizer/gru/validation_returns_vs_equal_weight.png

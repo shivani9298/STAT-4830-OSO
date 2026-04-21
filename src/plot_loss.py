@@ -39,10 +39,16 @@ def plot_train_val_rolling_and_test(
     rolling_epochs: int = 3,
     title: str = "Training / validation loss (rolling) and test loss",
     dpi: int = 150,
+    raw_alpha: float = 0.22,
+    rolling_linewidth: float = 2.2,
+    plot_lr: bool = True,
 ) -> Path:
     """
     Plot per-epoch ``train_loss`` and ``val_loss`` with optional rolling means, plus a horizontal
     line for a single **test-set** loss evaluation (post-training; not per-epoch).
+
+    Raw per-epoch curves are de-emphasized (``raw_alpha``); rolling means are the main read.
+    If ``plot_lr`` and history rows include ``lr``, draws learning rate on a right-hand axis.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,11 +60,23 @@ def plot_train_val_rolling_and_test(
     va_r = _rolling_mean(val_loss, rolling_epochs)
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(epochs_x, train_loss, alpha=0.35, label="Train loss", color="C0")
-    ax.plot(epochs_x, val_loss, alpha=0.35, label="Validation loss", color="C1")
+    ax.plot(epochs_x, train_loss, alpha=raw_alpha, label="Train loss (per epoch)", color="C0")
+    ax.plot(epochs_x, val_loss, alpha=raw_alpha, label="Validation loss (per epoch)", color="C1")
     if rolling_epochs > 1:
-        ax.plot(epochs_x, tr_r, label=f"Train (rolling-{rolling_epochs})", color="C0", linewidth=2)
-        ax.plot(epochs_x, va_r, label=f"Val (rolling-{rolling_epochs})", color="C1", linewidth=2)
+        ax.plot(
+            epochs_x,
+            tr_r,
+            label=f"Train (rolling-{rolling_epochs})",
+            color="C0",
+            linewidth=rolling_linewidth,
+        )
+        ax.plot(
+            epochs_x,
+            va_r,
+            label=f"Val (rolling-{rolling_epochs})",
+            color="C1",
+            linewidth=rolling_linewidth,
+        )
     ax.axhline(0.0, color="gray", linewidth=0.8, linestyle="--", alpha=0.5)
     if test_loss is not None and np.isfinite(test_loss):
         ax.axhline(
@@ -71,8 +89,20 @@ def plot_train_val_rolling_and_test(
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
     ax.set_title(title)
-    ax.legend(loc="best", fontsize=8)
     ax.grid(True, alpha=0.3)
+
+    if plot_lr and history and "lr" in history[0]:
+        lr_y = [float(h["lr"]) for h in history]
+        ax2 = ax.twinx()
+        ax2.plot(epochs_x, lr_y, color="0.45", linewidth=1.2, linestyle=":", label="Learning rate")
+        ax2.set_ylabel("Learning rate", color="0.35")
+        ax2.tick_params(axis="y", labelcolor="0.35")
+        lines1, lab1 = ax.get_legend_handles_labels()
+        lines2, lab2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, lab1 + lab2, loc="best", fontsize=8)
+    else:
+        ax.legend(loc="best", fontsize=8)
+
     fig.tight_layout()
     fig.savefig(out_path, dpi=dpi)
     plt.close(fig)
@@ -86,6 +116,7 @@ def plot_training_loss(
     title: str = "IPO Optimizer: Training and Validation Loss",
     dpi: int = 150,
     semilogy: bool = False,
+    rolling_epochs: int = 1,
 ) -> Path:
     """
     Save a line chart of ``train_loss`` and ``val_loss`` vs ``epoch``.
@@ -94,6 +125,7 @@ def plot_training_loss(
     scale of |loss| (small positive val losses).
 
     ``history`` entries must include keys ``epoch``, ``train_loss``, ``val_loss``.
+    If ``rolling_epochs`` > 1, overlays smoothed curves (less spiky than raw per-epoch lines).
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,16 +133,34 @@ def plot_training_loss(
     epochs_x = [int(h["epoch"]) for h in history]
     train_loss = [float(h["train_loss"]) for h in history]
     val_loss = [float(h["val_loss"]) for h in history]
+    tr_r = _rolling_mean(train_loss, rolling_epochs) if rolling_epochs > 1 else train_loss
+    va_r = _rolling_mean(val_loss, rolling_epochs) if rolling_epochs > 1 else val_loss
 
     fig, ax = plt.subplots(figsize=(8, 5))
     if semilogy:
         t_plot = [max(abs(x), 1e-8) for x in train_loss]
         v_plot = [max(abs(x), 1e-8) for x in val_loss]
-        ax.semilogy(epochs_x, t_plot, label="Train loss (|.|)", marker="o", markersize=3)
-        ax.semilogy(epochs_x, v_plot, label="Validation loss (|.|)", marker="s", markersize=3)
+        ax.semilogy(epochs_x, t_plot, label="Train (raw)", alpha=0.35, linewidth=1)
+        ax.semilogy(epochs_x, v_plot, label="Val (raw)", alpha=0.35, linewidth=1)
+        if rolling_epochs > 1:
+            trs = [max(abs(x), 1e-8) for x in tr_r]
+            vas = [max(abs(x), 1e-8) for x in va_r]
+            ax.semilogy(
+                epochs_x,
+                trs,
+                label=f"Train rolling-{rolling_epochs}",
+                linewidth=2,
+            )
+            ax.semilogy(epochs_x, vas, label=f"Val rolling-{rolling_epochs}", linewidth=2)
     else:
-        ax.plot(epochs_x, train_loss, label="Train loss", marker="o", markersize=3)
-        ax.plot(epochs_x, val_loss, label="Validation loss", marker="s", markersize=3)
+        if rolling_epochs > 1:
+            ax.plot(epochs_x, train_loss, label="Train (raw)", alpha=0.35, linewidth=1)
+            ax.plot(epochs_x, val_loss, label="Val (raw)", alpha=0.35, linewidth=1)
+            ax.plot(epochs_x, tr_r, label=f"Train rolling-{rolling_epochs}", linewidth=2.2, color="C0")
+            ax.plot(epochs_x, va_r, label=f"Val rolling-{rolling_epochs}", linewidth=2.2, color="C1")
+        else:
+            ax.plot(epochs_x, train_loss, label="Train loss", marker="o", markersize=3)
+            ax.plot(epochs_x, val_loss, label="Validation loss", marker="s", markersize=3)
         ax.axhline(0.0, color="gray", linewidth=0.8, linestyle="--", alpha=0.6)
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
@@ -131,6 +181,8 @@ def plot_cumulative_returns_vs_equal_weight(
     *,
     title: str = "Cumulative growth: model vs 50/50 (validation)",
     dpi: int = 150,
+    excess_panel: bool = True,
+    fill_between: bool = True,
 ) -> Path:
     """
     Plot normalized cumulative wealth ``cumprod(1 + r)`` for the learned weights vs a fixed **50/50**
@@ -138,6 +190,10 @@ def plot_cumulative_returns_vs_equal_weight(
 
     - ``weights`` / ``R``: ``(N, 2)`` or sector heads ``(N, G, 2)``. For ``(N, G, 2)``, daily returns
       are averaged across sector sleeves so two comparable scalar series are plotted.
+
+    If ``excess_panel``, adds a second subplot: cumulative compound **excess** vs 50/50,
+    ``Π(1 + r_model - r_50/50) - 1``, matching common holdout plots. ``fill_between`` shades the
+    gap between model and benchmark on the wealth panel.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -173,6 +229,8 @@ def plot_cumulative_returns_vs_equal_weight(
     we = _wealth(eq_ret)
     tot_m = float(np.prod(1.0 + model_ret) - 1.0)
     tot_e = float(np.prod(1.0 + eq_ret) - 1.0)
+    excess_daily = model_ret - eq_ret
+    cum_excess = np.cumprod(1.0 + excess_daily) - 1.0
 
     t = np.arange(n)
     try:
@@ -183,15 +241,40 @@ def plot_cumulative_returns_vs_equal_weight(
         t_plot = t
         xlabel = "Window index"
 
-    fig, ax = plt.subplots(figsize=(9, 5))
+    if excess_panel:
+        fig, (ax, ax_ex) = plt.subplots(
+            2, 1, figsize=(9, 7.2), sharex=True, gridspec_kw={"height_ratios": [1.15, 1]}
+        )
+    else:
+        fig, ax = plt.subplots(figsize=(9, 5))
+        ax_ex = None
+
+    if fill_between:
+        ax.fill_between(t_plot, we, wm, where=(wm >= we), interpolate=True, alpha=0.12, color="C0", label=None)
+        ax.fill_between(t_plot, we, wm, where=(wm < we), interpolate=True, alpha=0.12, color="C1", label=None)
     ax.plot(t_plot, wm, label=f"Learned allocator (total {tot_m:+.1%})", color="C0", linewidth=2)
     ax.plot(t_plot, we, label=f"50/50 market/IPO (total {tot_e:+.1%})", color="C1", linewidth=2, linestyle="--")
     ax.axhline(1.0, color="gray", linewidth=0.8, linestyle=":", alpha=0.6)
     ax.set_ylabel("Growth of $1 (normalized)")
-    ax.set_xlabel(xlabel)
     ax.set_title(title)
     ax.legend(loc="best", fontsize=9)
     ax.grid(True, alpha=0.3)
+    if ax_ex is not None:
+        ax_ex.axhline(0.0, color="gray", linewidth=0.8, linestyle=":", alpha=0.6)
+        ax_ex.plot(
+            t_plot,
+            cum_excess,
+            color="C2",
+            linewidth=1.8,
+            label="Cumulative excess vs 50/50 (compound)",
+        )
+        ax_ex.set_ylabel("Excess vs 50/50")
+        ax_ex.set_xlabel(xlabel)
+        ax_ex.legend(loc="best", fontsize=8)
+        ax_ex.grid(True, alpha=0.3)
+    else:
+        ax.set_xlabel(xlabel)
+
     fig.tight_layout()
     fig.savefig(out_path, dpi=dpi)
     plt.close(fig)
