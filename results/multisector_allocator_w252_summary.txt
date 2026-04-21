@@ -1,0 +1,16 @@
+Global Multi-Sector Allocator - Summary
+======================================
+Assets: market, sector_Unknown
+Mean daily return:     0.2224%
+Volatility (daily):    1.1139%
+Sharpe (annualized):   3.17
+Max drawdown:          -7.31%
+Avg turnover:          0.0011
+
+Average weights by asset:
+  market                   58.51%
+  sector_Unknown           41.49%
+
+Peak weights by asset:
+  market                   58.79%
+  sector_Unknown           41.94%

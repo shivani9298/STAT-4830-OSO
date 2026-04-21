@@ -1,0 +1,23 @@
+Global Multi-Sector Allocator — context window comparison (same data prep, same val_frac)
+========================================================================
+
+Context window: 126 trading days
+  Train windows: 906  |  Val windows: 226
+  Mean daily return:     0.2245%
+  Volatility (daily):    1.0520%
+  Sharpe (annualized):   3.39
+  Total return (period): 63.96%
+  Max drawdown:          -7.38%
+  Avg turnover:          0.0009
+
+Context window: 252 trading days
+  Train windows: 805  |  Val windows: 201
+  Mean daily return:     0.2224%
+  Volatility (daily):    1.1139%
+  Sharpe (annualized):   3.17
+  Total return (period): 54.37%
+  Max drawdown:          -7.31%
+  Avg turnover:          0.0011
+
+Deltas (second row minus first row, by metric order above):
+  Sharpe: -0.22  MaxDD: +0.08%  Total ret: -9.59%
