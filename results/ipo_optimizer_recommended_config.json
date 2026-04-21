@@ -1,0 +1,12 @@
+{
+  "model_type": "gru",
+  "lambda_cvar": 0.3,
+  "lambda_vol": 0.3,
+  "lambda_turnover": 0.0,
+  "lambda_path": 0.0,
+  "lambda_vol_excess": 0.5,
+  "target_vol_annual": 0.25,
+  "mean_return_weight": 2.5,
+  "log_growth_weight": 0.5,
+  "_chosen_from_experiment": "return_focused"
+}

@@ -10,6 +10,7 @@ Use list_wrds_libraries() and list_wrds_tables(conn, 'lseg') to discover.
 """
 from __future__ import annotations
 
+import builtins
 import os
 import pandas as pd
 from typing import Optional
@@ -21,6 +22,13 @@ except ImportError:
 
 _WRDS_CONNECT_PATCHED = False
 _WRDS_RAW_SQL_PATCHED = False
+
+
+def _chunked(seq: list, size: int):
+    """Yield consecutive chunks from ``seq``."""
+    n = len(seq)
+    for i in range(0, n, size):
+        yield seq[i : i + size]
 
 
 def _wrap_sqlalchemy_connection_str_execute(conn) -> None:
@@ -199,14 +207,28 @@ def get_connection(
     username = wrds_username or os.environ.get("WRDS_USERNAME")
     password = wrds_password or os.environ.get("WRDS_PASSWORD")
     if username and password:
-        # The WRDS library doesn't accept a password kwarg — it always initialises
-        # self._password = "" and tries an empty-password connection first, which
-        # means pgpass is never consulted.  Work around this by deferring autoconnect,
-        # injecting the password, then connecting manually.
+        # The WRDS library can still prompt even when username/password are available.
+        # Force non-interactive credentials by patching the private getter on this
+        # connection instance before calling ``connect()``.
         conn = wrds.Connection(wrds_username=username, autoconnect=False)
+        conn._username = username
         conn._password = password
-        conn.connect()
-        conn.load_library_list()
+        orig_get = getattr(conn, "_Connection__get_user_credentials", None)
+        if callable(orig_get):
+            conn._Connection__get_user_credentials = lambda: (username, password)
+        orig_input = builtins.input
+        builtins.input = (
+            lambda prompt="": "n"
+            if "Create .pgpass file now" in str(prompt)
+            else orig_input(prompt)
+        )
+        try:
+            conn.connect()
+        finally:
+            builtins.input = orig_input
+            if callable(orig_get):
+                conn._Connection__get_user_credentials = orig_get
+        # Avoid eager metadata fetch; queries call raw_sql directly and do not need this.
         return conn
     return wrds.Connection(wrds_username=username)
 
@@ -448,17 +470,54 @@ def load_stock_prices_wrds(
     """
     end_clause = f"AND a.date <= '{end}'" if end else ""
     if permnos is not None:
-        permno_list = ",".join(str(p) for p in permnos)
-        sql = f"""
-            SELECT a.date, a.permno, a.prc, a.ret, a.vol
-            FROM crsp.dsf AS a
-            WHERE a.permno IN ({permno_list})
-              AND a.date >= '{start}' {end_clause}
-            ORDER BY a.date, a.permno
-        """
-        df = conn.raw_sql(sql, date_cols=["date"])
-        return df
+        permnos_clean = [int(p) for p in permnos]
+        if not permnos_clean:
+            return pd.DataFrame()
+        chunk_size = 500
+        if len(permnos_clean) <= chunk_size:
+            permno_list = ",".join(str(p) for p in permnos_clean)
+            sql = f"""
+                SELECT a.date, a.permno, a.prc, a.ret, a.vol
+                FROM crsp.dsf AS a
+                WHERE a.permno IN ({permno_list})
+                  AND a.date >= '{start}' {end_clause}
+                ORDER BY a.date, a.permno
+            """
+            return conn.raw_sql(sql, date_cols=["date"])
+        n_chunks = (len(permnos_clean) + chunk_size - 1) // chunk_size
+        print(
+            f"[IPO] WRDS: querying crsp.dsf in {n_chunks} permno chunks "
+            f"(chunk_size={chunk_size}, total_permnos={len(permnos_clean)})...",
+            flush=True,
+        )
+        parts: list[pd.DataFrame] = []
+        prog_every = max(1, n_chunks // 10)
+        for idx, chunk in enumerate(_chunked(permnos_clean, chunk_size), start=1):
+            permno_list = ",".join(str(p) for p in chunk)
+            sql = f"""
+                SELECT a.date, a.permno, a.prc, a.ret, a.vol
+                FROM crsp.dsf AS a
+                WHERE a.permno IN ({permno_list})
+                  AND a.date >= '{start}' {end_clause}
+                ORDER BY a.date, a.permno
+            """
+            part = conn.raw_sql(sql, date_cols=["date"])
+            if not part.empty:
+                parts.append(part)
+            if idx == 1 or idx % prog_every == 0 or idx == n_chunks:
+                print(
+                    f"[IPO] WRDS: dsf chunk {idx}/{n_chunks} complete",
+                    flush=True,
+                )
+        if not parts:
+            return pd.DataFrame(columns=["date", "permno", "prc", "ret", "vol"])
+        return (
+            pd.concat(parts, ignore_index=True)
+            .sort_values(["date", "permno"])
+            .reset_index(drop=True)
+        )
     if tickers is not None:
+        print(f"[IPO] WRDS: resolving {len(tickers)} tickers to permnos...", flush=True)
         # Resolve tickers to permnos via crsp.dsenames (ticker, namedt, nameendt)
         ticker_list = ",".join(f"'{t}'" for t in tickers)
         end_val = end or "2099-12-31"
@@ -485,6 +544,11 @@ def load_stock_prices_wrds(
                 )
         if names.empty:
             return pd.DataFrame()
+        print(
+            f"[IPO] WRDS: mapped {len(names['permno'].drop_duplicates())} permnos from "
+            f"{len(names['ticker'].drop_duplicates())} tickers",
+            flush=True,
+        )
         permnos = names["permno"].drop_duplicates().tolist()
         df = load_stock_prices_wrds(conn, start=start, end=end, permnos=permnos)
         # Merge back ticker

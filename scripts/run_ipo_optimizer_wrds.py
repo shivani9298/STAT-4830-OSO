@@ -13,14 +13,17 @@ for the same merge (e.g. run several transformer variants in sequence).
 Set ``IPO_EXPORT_ATTENTION=1`` to save self-attention maps (``results/ipo_optimizer_attention.npz`` and
 ``figures/ipo_optimizer/<model>/attention_layer0.png``) when ``model_type`` is ``transformer``.
 Set ``IPO_SAVE_LOSS_PLOTS=1`` to also write rolling and semilogy loss figures under ``figures/ipo_optimizer/<model>/``.
-Set ``IPO_LR_SCHEDULE`` to override JSON: ``constant``, ``cosine``, ``plateau`` (validation-driven reductions),
-or ``exponential`` (see ``lr_schedule`` / ``lr_decay`` in ``best_config`` or ``DEFAULTS``).
+Set ``IPO_LR_SCHEDULE`` to override JSON: ``constant``, ``cosine``, ``warmup_cosine``, ``plateau``
+(validation-driven reductions), or ``exponential`` (see ``lr_schedule`` / ``lr_decay`` in ``best_config``
+or ``DEFAULTS``). For ``warmup_cosine``, set ``warmup_epochs`` in config.
 Set ``IPO_SECTOR_PORTFOLIOS=0`` for a single market-vs-IPO index (overrides ``SECTOR_PORTFOLIOS``).
 Set ``IPO_DATA_START`` / ``IPO_DATA_END`` (e.g. ``2015-01-01`` / ``2024-12-31``) to override the default
 sample range (otherwise ``START_DATE`` / ``END_DATE`` below).
 Set ``IPO_LOSS_ROLLING_EPOCHS`` (default ``3``) for the rolling mean window when ``IPO_SAVE_LOSS_PLOTS=1``.
 Saves ``figures/ipo_optimizer/<model>/validation_returns_vs_equal_weight.png``: cumulative growth of $1 for the
 learned allocator vs fixed 50/50 market/IPO on **validation** windows (sector mode: mean across sleeves).
+Also writes ``results/ipo_optimizer_returns_val[.csv|_<model>.csv]`` with per-window market/IPO/50-50 returns
+so you can replot the daily chart without retraining (see ``scripts/replot_daily_vs_50_50.py``).
 Training history is written to ``results/ipo_optimizer_training_history.json`` (latest run) and
 ``results/ipo_optimizer_training_history_<model>.json``.
 Set ``IPO_SECTOR_SOURCE`` to ``yfinance`` (Yahoo ``info['sector']``), ``compustat`` (default:
@@ -40,6 +43,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -82,6 +86,8 @@ from src.export import (
     export_sector_group_outputs,
     export_summary,
     export_weights_csv,
+    export_window_returns_csv,
+    model_csv_suffix,
     predict_sector_head_weights,
     predict_weights,
     portfolio_stats,
@@ -128,6 +134,14 @@ DEFAULTS = {
     # Emphasize level returns vs risk penalties; optional log-growth proxy for compound return (see src.losses)
     "mean_return_weight": 1.0,
     "log_growth_weight": 0.0,
+    "lambda_turnover": 0.01,
+    "lambda_path": 0.01,
+    "cvar_temperature": 0.1,
+    "mean_loss_mode": "linear",
+    "huber_delta": 0.02,
+    "winsor_abs": None,
+    "warmup_epochs": 0,
+    "log_loss_term_breakdown": True,
     "max_grad_norm": 1.0,
     "grad_norm_mode": "clip",
     "weight_decay": 1e-5,
@@ -166,6 +180,14 @@ _CONFIG_OPTIONAL = frozenset(
         "exponential_gamma",
         "mean_return_weight",
         "log_growth_weight",
+        "lambda_turnover",
+        "lambda_path",
+        "cvar_temperature",
+        "mean_loss_mode",
+        "huber_delta",
+        "winsor_abs",
+        "warmup_epochs",
+        "log_loss_term_breakdown",
         "max_grad_norm",
         "grad_norm_mode",
     }
@@ -228,55 +250,73 @@ def build_ipo_index_mcap(
     ipo_lookup = dict(zip(ipo_dates_df["ticker"], ipo_dates_df["ipo_date"]))
     if ticker_allowlist is not None:
         ipo_lookup = {k: v for k, v in ipo_lookup.items() if k in ticker_allowlist}
-    returns_df = prices_df.pct_change()
-    trading_days = {
-        t: prices_df[t].dropna().index.tolist()
-        for t in prices_df.columns
-        if t != "SPY" and t in ipo_lookup
-    }
-    all_dates = prices_df.index.tolist()
+
+    all_dates = pd.DatetimeIndex(prices_df.index).normalize()
     n_all = len(all_dates)
-    index_data = []
+    if n_all == 0 or not ipo_lookup:
+        return pd.DataFrame({"ipo_ret": []}, index=pd.DatetimeIndex([], name="date"))
+
+    eligible_tickers: list[str] = []
+    ipo_ts: list[pd.Timestamp] = []
+    shares: list[float] = []
+    for t, ipo_date in ipo_lookup.items():
+        if t not in prices_df.columns or t not in shares_dict:
+            continue
+        eligible_tickers.append(t)
+        ipo_ts.append(pd.Timestamp(ipo_date).normalize())
+        shares.append(float(shares_dict[t]))
+    if not eligible_tickers:
+        out = pd.DataFrame(index=all_dates, data={"ipo_ret": np.nan})
+        out.index.name = "date"
+        return out
+
+    prices = prices_df[eligible_tickers].to_numpy(dtype=np.float64, copy=False)
+    rets = prices_df[eligible_tickers].pct_change().to_numpy(dtype=np.float64, copy=False)
+    shares_arr = np.asarray(shares, dtype=np.float64)
+    n_t = len(eligible_tickers)
+
+    has_price = ~np.isnan(prices)
+    price_pos = prices > 0.0
+    active = np.zeros((n_all, n_t), dtype=bool)
+    for j in range(n_t):
+        valid_idx = np.flatnonzero(has_price[:, j])
+        if valid_idx.size == 0:
+            continue
+        start_pos = int(all_dates.searchsorted(ipo_ts[j], side="left"))
+        if start_pos >= n_all:
+            continue
+        k = int(np.searchsorted(valid_idx, start_pos, side="left"))
+        if k >= valid_idx.size:
+            continue
+        first_trade_idx = int(valid_idx[k])
+        end_idx = min(n_all, first_trade_idx + int(holding_days))
+        active[first_trade_idx:end_idx, j] = True
+
+    ipo_ret_arr = np.full((n_all,), np.nan, dtype=np.float64)
     progress_every = max(1, n_all // 20)
-    for i, date in enumerate(all_dates):
+    for i in range(n_all):
         if i == 0 or (i + 1) % progress_every == 0 or i == n_all - 1:
             print(
                 f"  [IPO] IPO index progress: day {i + 1}/{n_all} ({100 * (i + 1) / n_all:.0f}%)",
                 flush=True,
             )
-        market_caps = {}
-        for ticker, ipo_date in ipo_lookup.items():
-            if ticker not in trading_days or ticker not in shares_dict:
-                continue
-            ticker_days = trading_days[ticker]
-            first_trade_idx = next((i for i, d in enumerate(ticker_days) if d >= ipo_date), None)
-            if first_trade_idx is None:
-                continue
-            if date in ticker_days:
-                current_idx = ticker_days.index(date)
-                if 0 <= current_idx - first_trade_idx < holding_days:
-                    try:
-                        cp = prices_df.loc[date, ticker]
-                        if pd.notna(cp) and cp > 0:
-                            market_caps[ticker] = cp * shares_dict[ticker]
-                    except Exception:
-                        pass
-        total_mcap = sum(market_caps.values())
-        if len(market_caps) >= min_names and total_mcap > 0:
-            wr, vc = 0.0, 0
-            for t, mcap in market_caps.items():
-                try:
-                    r = returns_df.loc[date, t]
-                    if pd.notna(r):
-                        wr += (mcap / total_mcap) * r
-                        vc += 1
-                except Exception:
-                    pass
-            ipo_ret = wr if vc >= min_names else np.nan
-        else:
-            ipo_ret = np.nan
-        index_data.append({"date": date, "ipo_ret": ipo_ret})
-    return pd.DataFrame(index_data).set_index("date")
+        alive = active[i] & has_price[i] & price_pos[i]
+        alive_count = int(np.count_nonzero(alive))
+        if alive_count < int(min_names):
+            continue
+        caps = prices[i, alive] * shares_arr[alive]
+        total_mcap = float(caps.sum())
+        if total_mcap <= 0.0:
+            continue
+        rvals = rets[i, alive]
+        valid_ret = ~np.isnan(rvals)
+        if int(np.count_nonzero(valid_ret)) < int(min_names):
+            continue
+        ipo_ret_arr[i] = float(np.dot(caps[valid_ret], rvals[valid_ret]) / total_mcap)
+
+    out = pd.DataFrame(index=all_dates, data={"ipo_ret": ipo_ret_arr})
+    out.index.name = "date"
+    return out
 
 
 def prepare_data(
@@ -578,6 +618,14 @@ def main():
             exponential_gamma=cfg.get("exponential_gamma", 0.99),
             mean_return_weight=cfg.get("mean_return_weight", 1.0),
             log_growth_weight=cfg.get("log_growth_weight", 0.0),
+            lambda_turnover=float(cfg.get("lambda_turnover", 0.01)),
+            lambda_path=float(cfg.get("lambda_path", 0.01)),
+            cvar_temperature=float(cfg.get("cvar_temperature", 0.1)),
+            mean_loss_mode=str(cfg.get("mean_loss_mode", "linear")),
+            huber_delta=float(cfg.get("huber_delta", 0.02)),
+            winsor_abs=cfg.get("winsor_abs"),
+            warmup_epochs=int(cfg.get("warmup_epochs", 0)),
+            log_loss_term_breakdown=bool(cfg.get("log_loss_term_breakdown", True)),
             max_grad_norm=float(cfg.get("max_grad_norm", 1.0)),
             grad_norm_mode=str(cfg.get("grad_norm_mode", "clip")),
         )
@@ -609,6 +657,14 @@ def main():
             exponential_gamma=cfg.get("exponential_gamma", 0.99),
             mean_return_weight=cfg.get("mean_return_weight", 1.0),
             log_growth_weight=cfg.get("log_growth_weight", 0.0),
+            lambda_turnover=float(cfg.get("lambda_turnover", 0.01)),
+            lambda_path=float(cfg.get("lambda_path", 0.01)),
+            cvar_temperature=float(cfg.get("cvar_temperature", 0.1)),
+            mean_loss_mode=str(cfg.get("mean_loss_mode", "linear")),
+            huber_delta=float(cfg.get("huber_delta", 0.02)),
+            winsor_abs=cfg.get("winsor_abs"),
+            warmup_epochs=int(cfg.get("warmup_epochs", 0)),
+            log_loss_term_breakdown=bool(cfg.get("log_loss_term_breakdown", True)),
             max_grad_norm=float(cfg.get("max_grad_norm", 1.0)),
             grad_norm_mode=str(cfg.get("grad_norm_mode", "clip")),
         )
@@ -651,6 +707,7 @@ def main():
             fig_dir / "loss_semilogy.png",
             title=title_base,
             semilogy=True,
+            rolling_epochs=roll_w,
         )
         print(f"Saved semilogy loss plot to {semilogy_path}")
 
@@ -711,6 +768,26 @@ def main():
         print(policy_rule(avg_ipo))
         print(f"Suggested position scale: {scale:.2f}")
         print(f"Metrics: Sharpe={stats['sharpe_annualized']:.2f}, MaxDD={stats['max_drawdown']:.2%}")
+
+    _suf = model_csv_suffix(model_tag)
+    export_window_returns_csv(
+        data["dates_val"],
+        data["R_val"],
+        out_dir / f"ipo_optimizer_returns_val{_suf}.csv",
+    )
+    print(
+        f"[IPO] Saved per-window returns for replotting: ipo_optimizer_returns_val{_suf}.csv",
+        flush=True,
+    )
+    if not use_sectors:
+        shutil.copy2(
+            out_dir / "ipo_optimizer_weights.csv",
+            out_dir / f"ipo_optimizer_weights_val{_suf}.csv",
+        )
+        print(
+            f"[IPO] Copied weights to ipo_optimizer_weights_val{_suf}.csv (for compare / replot scripts)",
+            flush=True,
+        )
 
     cmp_title = (
         "Validation: cumulative growth vs 50/50 (mean across sector sleeves)"

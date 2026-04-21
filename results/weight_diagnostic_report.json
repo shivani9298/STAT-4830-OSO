@@ -1,0 +1,92 @@
+{
+  "existing_output_analysis": {
+    "weights": {
+      "n_rows": 182,
+      "market_mean": 0.5204555752197803,
+      "ipo_mean": 0.4795444232967033,
+      "market_std": 2.221142836729187e-06,
+      "ipo_std": 2.2176975759419753e-06,
+      "avg_turnover": 2.3372375690631476e-06,
+      "max_daily_delta": 1.2850000000008688e-05
+    },
+    "returns": {
+      "n_rows": 182,
+      "market_mean": 0.0008720328561157524,
+      "ipo_mean": 0.0010623619389182276,
+      "market_std": 0.007113794809206612,
+      "ipo_std": 0.01461216017741349,
+      "corr_market_ipo": 0.4679005670044453,
+      "best_static_ipo_weight_by_sharpe": 0.078,
+      "best_static_ipo_weight_by_total_return": 1.0,
+      "best_static_ipo_weight_by_mean_return": 1.0
+    }
+  },
+  "synthetic_ablation": [
+    {
+      "name": "baseline_defaults",
+      "epochs_ran": 12,
+      "ipo_weight_mean": 0.0022402312606573105,
+      "ipo_weight_std": 6.119436147855595e-05,
+      "corr_weight_signal": 0.8439203523895917,
+      "mean_return_model": 0.000438769900938496,
+      "mean_return_equal_weight": 0.00045288921683095396,
+      "total_return_model": 0.16345393657684326,
+      "total_return_equal_weight": 0.16870033740997314,
+      "config": {
+        "lambda_cvar": 0.5,
+        "lambda_vol": 0.5,
+        "lambda_turnover": 0.01,
+        "lambda_path": 0.01,
+        "lambda_diversify": 0.0,
+        "lambda_vol_excess": 1.0,
+        "target_vol_annual": 0.25,
+        "mean_return_weight": 1.0,
+        "log_growth_weight": 0.0
+      }
+    },
+    {
+      "name": "no_turnover_path",
+      "epochs_ran": 12,
+      "ipo_weight_mean": 0.5676832795143127,
+      "ipo_weight_std": 0.44125962257385254,
+      "corr_weight_signal": 0.9335812257127738,
+      "mean_return_model": 0.0012600114569067955,
+      "mean_return_equal_weight": 0.00045288921683095396,
+      "total_return_model": 0.5622060298919678,
+      "total_return_equal_weight": 0.16870033740997314,
+      "config": {
+        "lambda_cvar": 0.5,
+        "lambda_vol": 0.5,
+        "lambda_turnover": 0.0,
+        "lambda_path": 0.0,
+        "lambda_diversify": 0.0,
+        "lambda_vol_excess": 1.0,
+        "target_vol_annual": 0.25,
+        "mean_return_weight": 1.0,
+        "log_growth_weight": 0.0
+      }
+    },
+    {
+      "name": "return_focused",
+      "epochs_ran": 12,
+      "ipo_weight_mean": 0.5765456557273865,
+      "ipo_weight_std": 0.4494655728340149,
+      "corr_weight_signal": 0.926973077631715,
+      "mean_return_model": 0.001275325776077807,
+      "mean_return_equal_weight": 0.00045288921683095396,
+      "total_return_model": 0.5708088874816895,
+      "total_return_equal_weight": 0.16870033740997314,
+      "config": {
+        "lambda_cvar": 0.3,
+        "lambda_vol": 0.3,
+        "lambda_turnover": 0.0,
+        "lambda_path": 0.0,
+        "lambda_diversify": 0.0,
+        "lambda_vol_excess": 0.5,
+        "target_vol_annual": 0.25,
+        "mean_return_weight": 2.5,
+        "log_growth_weight": 0.5
+      }
+    }
+  ]
+}
