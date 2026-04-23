@@ -124,6 +124,33 @@ def _scheduler_step(
         scheduler.step()
 
 
+def _to_float_tensor(x: Any) -> torch.Tensor:
+    """Convert dataset arrays to float32 tensors once (usually CPU-resident)."""
+    if isinstance(x, torch.Tensor):
+        return x.to(dtype=torch.float32)
+    return torch.as_tensor(x, dtype=torch.float32)
+
+
+def _slice_batch_tensor(
+    x: torch.Tensor | Any,
+    start: int,
+    end: int,
+    *,
+    device: torch.device,
+) -> torch.Tensor:
+    """
+    Slice a batch and place it on ``device`` with float32 dtype.
+    Supports both tensor-backed and numpy-backed datasets.
+    """
+    non_blocking = device.type != "cpu"
+    if isinstance(x, torch.Tensor):
+        b = x[start:end]
+        if b.device == device and b.dtype == torch.float32:
+            return b
+        return b.to(device=device, dtype=torch.float32, non_blocking=non_blocking)
+    return torch.as_tensor(x[start:end], device=device, dtype=torch.float32)
+
+
 def _weights_prev_consecutive(
     w: torch.Tensor,
     last_w: Optional[torch.Tensor],
@@ -187,8 +214,8 @@ def train_epoch(
         end = min(start + batch_size, n)
         if end - start < 1:
             continue
-        x = torch.as_tensor(X[start:end], device=device, dtype=torch.float32)
-        r = torch.as_tensor(R[start:end], device=device, dtype=torch.float32)
+        x = _slice_batch_tensor(X, start, end, device=device)
+        r = _slice_batch_tensor(R, start, end, device=device)
         w = model(x)
         prev = _weights_prev_consecutive(w, last_w, start_idx=start)
         loss, components = combined_loss(
@@ -244,8 +271,9 @@ def validate(
     acc_components = {}
     last_w: Optional[torch.Tensor] = None
     for start in range(0, X.shape[0], batch_size):
-        x = torch.as_tensor(X[start : start + batch_size], device=device, dtype=torch.float32)
-        r = torch.as_tensor(R[start : start + batch_size], device=device, dtype=torch.float32)
+        end = min(start + batch_size, X.shape[0])
+        x = _slice_batch_tensor(X, start, end, device=device)
+        r = _slice_batch_tensor(R, start, end, device=device)
         w = model(x)
         prev = _weights_prev_consecutive(w, last_w, start_idx=start)
         loss, components = combined_loss(
@@ -316,8 +344,8 @@ def train_epoch_sector_heads(
         end = min(start + batch_size, n)
         if end - start < 1:
             continue
-        x = torch.as_tensor(X[start:end], device=device, dtype=torch.float32)
-        r = torch.as_tensor(R[start:end], device=device, dtype=torch.float32)
+        x = _slice_batch_tensor(X, start, end, device=device)
+        r = _slice_batch_tensor(R, start, end, device=device)
         w = model(x)
         prev = _weights_prev_consecutive(w, last_w, start_idx=start)
         loss, components = combined_loss_sector_heads(w, r, weights_prev=prev, **loss_kw)
@@ -372,8 +400,9 @@ def validate_sector_heads(
         log_growth_weight=log_growth_weight,
     )
     for start in range(0, X.shape[0], batch_size):
-        x = torch.as_tensor(X[start : start + batch_size], device=device, dtype=torch.float32)
-        r = torch.as_tensor(R[start : start + batch_size], device=device, dtype=torch.float32)
+        end = min(start + batch_size, X.shape[0])
+        x = _slice_batch_tensor(X, start, end, device=device)
+        r = _slice_batch_tensor(R, start, end, device=device)
         w = model(x)
         prev = _weights_prev_consecutive(w, last_w, start_idx=start)
         loss, components = combined_loss_sector_heads(w, r, weights_prev=prev, **loss_kw)
@@ -433,10 +462,10 @@ def run_training_sector_heads(
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    X_train = data["X_train"]
-    R_train = data["R_train"]
-    X_val = data["X_val"]
-    R_val = data["R_val"]
+    X_train = _to_float_tensor(data["X_train"])
+    R_train = _to_float_tensor(data["R_train"])
+    X_val = _to_float_tensor(data["X_val"])
+    R_val = _to_float_tensor(data["R_val"])
     n_features = X_train.shape[2]
     n_sectors = data["n_sectors"]
     seq_len = X_train.shape[1]
@@ -596,10 +625,10 @@ def run_training(
 ) -> tuple[torch.nn.Module, list[dict]]:
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    X_train = data["X_train"]
-    R_train = data["R_train"]
-    X_val = data["X_val"]
-    R_val = data["R_val"]
+    X_train = _to_float_tensor(data["X_train"])
+    R_train = _to_float_tensor(data["R_train"])
+    X_val = _to_float_tensor(data["X_val"])
+    R_val = _to_float_tensor(data["R_val"])
     n_features = X_train.shape[2]
     n_assets = data["n_assets"]
     seq_len = X_train.shape[1]

@@ -1,0 +1,27 @@
+Commodity Optimizer — Summary
+==============================
+
+Commodity universe (14 tickers): DBC, GSG, GLD, IAU, SLV, USO, BNO, UNG, DBA, CORN, WEAT, SOYB, CPER, PPLT
+
+Model Portfolio:
+  Total return:           58.43%
+  Return (annualized):    17.24%
+  Volatility (annual):    13.65%
+  Sharpe (annualized):    1.23
+  Max drawdown:           -18.42%
+  Avg turnover:           0.1467
+  Average commodity wt:   28.12%
+  % days commodity wt>20%: 50.2%
+  Commodity weight std:   0.3053
+  Mean abs wt change/day: 0.0733
+  Unique commodity wts:   721
+
+Baseline Comparison (same period):
+  Market only:  Total=35.10%  AnnRet=10.96%  AnnVol=16.77%  Sharpe=0.70  MaxDD=-21.21%
+  Commodity only: Total=41.61%  AnnRet=12.78%  AnnVol=15.15%  Sharpe=0.87  MaxDD=-20.94%
+  Equal 50/50:  Total=40.36%  AnnRet=12.43%  AnnVol=12.42%  Sharpe=1.01  MaxDD=-17.44%
+
+Model minus 50/50:
+  Delta total return:     +18.07%
+  Delta ann return:       +4.81%
+  Delta Sharpe:           +0.228

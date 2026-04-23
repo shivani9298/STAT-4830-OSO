@@ -19,6 +19,28 @@ def _init_equal_weight_head(layer: nn.Module) -> None:
         nn.init.zeros_(layer.bias)
 
 
+def _build_sinusoidal_positional_encoding(
+    seq_len: int,
+    d_model: int,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Vectorized sinusoidal positional encoding with shape ``(1, seq_len, d_model)``."""
+    pe = torch.zeros(1, seq_len, d_model, device=device, dtype=dtype)
+    pos = torch.arange(seq_len, device=device, dtype=dtype).unsqueeze(1)
+    div = torch.exp(
+        torch.arange(0, d_model, 2, device=device, dtype=dtype)
+        * (-math.log(10000.0) / float(d_model))
+    )
+    phase = pos * div
+    pe[0, :, 0::2] = torch.sin(phase)
+    cos_cols = pe[0, :, 1::2].shape[-1]
+    if cos_cols > 0:
+        pe[0, :, 1::2] = torch.cos(phase[:, :cos_cols])
+    return pe
+
+
 class AttentionCapturingEncoderLayer(nn.TransformerEncoderLayer):
     """
     Like ``TransformerEncoderLayer`` but runs self-attention with ``need_weights=True``
@@ -81,11 +103,12 @@ class TransformerAllocator(nn.Module):
             nn.Linear(d_model, n_assets),
         )
         _init_equal_weight_head(self.mlp[-1])
+        self.register_buffer("_pe_cache", torch.empty(0), persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         _b, T, _f = x.shape
         x = self.proj(x)
-        pe = self._positional_encoding(T, x.device)
+        pe = self._positional_encoding(T, x.device, x.dtype)
         x = x + pe
         x = self.transformer(x)
         last = x[:, -1, :]
@@ -110,7 +133,7 @@ class TransformerAllocator(nn.Module):
             self.eval()
             b, t, _f = x.shape
             h = self.proj(x)
-            pe = self._positional_encoding(t, h.device)
+            pe = self._positional_encoding(t, h.device, h.dtype)
             h = h + pe
             _ = self.transformer(h)
             out = []
@@ -122,14 +145,26 @@ class TransformerAllocator(nn.Module):
         finally:
             torch.backends.mha.set_fastpath_enabled(prev)
 
-    def _positional_encoding(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        pe = torch.zeros(1, seq_len, self.d_model, device=device, dtype=torch.float32)
-        for i in range(seq_len):
-            for j in range(0, self.d_model, 2):
-                pe[0, i, j] = math.sin(i / 10000 ** (j / self.d_model))
-                if j + 1 < self.d_model:
-                    pe[0, i, j + 1] = math.cos(i / 10000 ** (j / self.d_model))
-        return pe
+    def _positional_encoding(
+        self,
+        seq_len: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        cache = self._pe_cache
+        if (
+            cache.numel() == 0
+            or cache.device != device
+            or cache.dtype != dtype
+            or cache.size(1) < seq_len
+        ):
+            self._pe_cache = _build_sinusoidal_positional_encoding(
+                seq_len,
+                self.d_model,
+                device=device,
+                dtype=dtype,
+            )
+        return self._pe_cache[:, :seq_len, :]
 
 
 class SectorMultiHeadTransformerAllocator(nn.Module):
@@ -176,11 +211,12 @@ class SectorMultiHeadTransformerAllocator(nn.Module):
         )
         for head in self.heads:
             _init_equal_weight_head(head[-1])
+        self.register_buffer("_pe_cache", torch.empty(0), persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T = x.size(1)
         x = self.proj(x)
-        pe = self._positional_encoding(T, x.device)
+        pe = self._positional_encoding(T, x.device, x.dtype)
         x = x + pe
         x = self.transformer(x)
         h = x[:, -1, :]
@@ -199,7 +235,7 @@ class SectorMultiHeadTransformerAllocator(nn.Module):
             self.eval()
             t = x.size(1)
             h = self.proj(x)
-            pe = self._positional_encoding(t, h.device)
+            pe = self._positional_encoding(t, h.device, h.dtype)
             h = h + pe
             _ = self.transformer(h)
             out = []
@@ -211,11 +247,23 @@ class SectorMultiHeadTransformerAllocator(nn.Module):
         finally:
             torch.backends.mha.set_fastpath_enabled(prev)
 
-    def _positional_encoding(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        pe = torch.zeros(1, seq_len, self.d_model, device=device, dtype=torch.float32)
-        for i in range(seq_len):
-            for j in range(0, self.d_model, 2):
-                pe[0, i, j] = math.sin(i / 10000 ** (j / self.d_model))
-                if j + 1 < self.d_model:
-                    pe[0, i, j + 1] = math.cos(i / 10000 ** (j / self.d_model))
-        return pe
+    def _positional_encoding(
+        self,
+        seq_len: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        cache = self._pe_cache
+        if (
+            cache.numel() == 0
+            or cache.device != device
+            or cache.dtype != dtype
+            or cache.size(1) < seq_len
+        ):
+            self._pe_cache = _build_sinusoidal_positional_encoding(
+                seq_len,
+                self.d_model,
+                device=device,
+                dtype=dtype,
+            )
+        return self._pe_cache[:, :seq_len, :]

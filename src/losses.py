@@ -38,13 +38,12 @@ def cvar_smooth(port_ret: torch.Tensor, alpha: float = 0.05, temperature: float 
     """
     n = port_ret.numel()
     k = max(1, int(alpha * n))
-    # Soft top-k: weight each return by how much it is in the "worst" tail
     s, _ = torch.sort(port_ret, dim=0)
     q = s[k - 1] if k <= len(s) else s[0]
-    # Soft indicator: weight ~ exp(-(r - q)/temp) for r < q
-    diff = port_ret - q
-    w = torch.exp(-torch.relu(-diff) / temperature)
-    w = w / (w.sum() + 1e-8)
+    temp = max(float(temperature), 1e-6)
+    # Larger logit for lower returns relative to the alpha-quantile.
+    tail_logits = (q - port_ret) / temp
+    w = torch.softmax(tail_logits, dim=0)
     cvar = (w * port_ret).sum()
     return cvar
 

@@ -228,55 +228,73 @@ def build_ipo_index_mcap(
     ipo_lookup = dict(zip(ipo_dates_df["ticker"], ipo_dates_df["ipo_date"]))
     if ticker_allowlist is not None:
         ipo_lookup = {k: v for k, v in ipo_lookup.items() if k in ticker_allowlist}
-    returns_df = prices_df.pct_change()
-    trading_days = {
-        t: prices_df[t].dropna().index.tolist()
-        for t in prices_df.columns
-        if t != "SPY" and t in ipo_lookup
-    }
-    all_dates = prices_df.index.tolist()
+
+    all_dates = pd.DatetimeIndex(prices_df.index).normalize()
     n_all = len(all_dates)
-    index_data = []
+    if n_all == 0 or not ipo_lookup:
+        return pd.DataFrame({"ipo_ret": []}, index=pd.DatetimeIndex([], name="date"))
+
+    eligible_tickers: list[str] = []
+    ipo_ts: list[pd.Timestamp] = []
+    shares: list[float] = []
+    for t, ipo_date in ipo_lookup.items():
+        if t not in prices_df.columns or t not in shares_dict:
+            continue
+        eligible_tickers.append(t)
+        ipo_ts.append(pd.Timestamp(ipo_date).normalize())
+        shares.append(float(shares_dict[t]))
+    if not eligible_tickers:
+        out = pd.DataFrame(index=all_dates, data={"ipo_ret": np.nan})
+        out.index.name = "date"
+        return out
+
+    prices = prices_df[eligible_tickers].to_numpy(dtype=np.float64, copy=False)
+    rets = prices_df[eligible_tickers].pct_change().to_numpy(dtype=np.float64, copy=False)
+    shares_arr = np.asarray(shares, dtype=np.float64)
+    n_t = len(eligible_tickers)
+
+    has_price = ~np.isnan(prices)
+    price_pos = prices > 0.0
+    active = np.zeros((n_all, n_t), dtype=bool)
+    for j in range(n_t):
+        valid_idx = np.flatnonzero(has_price[:, j])
+        if valid_idx.size == 0:
+            continue
+        start_pos = int(all_dates.searchsorted(ipo_ts[j], side="left"))
+        if start_pos >= n_all:
+            continue
+        k = int(np.searchsorted(valid_idx, start_pos, side="left"))
+        if k >= valid_idx.size:
+            continue
+        first_trade_idx = int(valid_idx[k])
+        end_idx = min(n_all, first_trade_idx + int(holding_days))
+        active[first_trade_idx:end_idx, j] = True
+
+    ipo_ret_arr = np.full((n_all,), np.nan, dtype=np.float64)
     progress_every = max(1, n_all // 20)
-    for i, date in enumerate(all_dates):
+    for i in range(n_all):
         if i == 0 or (i + 1) % progress_every == 0 or i == n_all - 1:
             print(
                 f"  [IPO] IPO index progress: day {i + 1}/{n_all} ({100 * (i + 1) / n_all:.0f}%)",
                 flush=True,
             )
-        market_caps = {}
-        for ticker, ipo_date in ipo_lookup.items():
-            if ticker not in trading_days or ticker not in shares_dict:
-                continue
-            ticker_days = trading_days[ticker]
-            first_trade_idx = next((i for i, d in enumerate(ticker_days) if d >= ipo_date), None)
-            if first_trade_idx is None:
-                continue
-            if date in ticker_days:
-                current_idx = ticker_days.index(date)
-                if 0 <= current_idx - first_trade_idx < holding_days:
-                    try:
-                        cp = prices_df.loc[date, ticker]
-                        if pd.notna(cp) and cp > 0:
-                            market_caps[ticker] = cp * shares_dict[ticker]
-                    except Exception:
-                        pass
-        total_mcap = sum(market_caps.values())
-        if len(market_caps) >= min_names and total_mcap > 0:
-            wr, vc = 0.0, 0
-            for t, mcap in market_caps.items():
-                try:
-                    r = returns_df.loc[date, t]
-                    if pd.notna(r):
-                        wr += (mcap / total_mcap) * r
-                        vc += 1
-                except Exception:
-                    pass
-            ipo_ret = wr if vc >= min_names else np.nan
-        else:
-            ipo_ret = np.nan
-        index_data.append({"date": date, "ipo_ret": ipo_ret})
-    return pd.DataFrame(index_data).set_index("date")
+        alive = active[i] & has_price[i] & price_pos[i]
+        alive_count = int(np.count_nonzero(alive))
+        if alive_count < int(min_names):
+            continue
+        caps = prices[i, alive] * shares_arr[alive]
+        total_mcap = float(caps.sum())
+        if total_mcap <= 0.0:
+            continue
+        rvals = rets[i, alive]
+        valid_ret = ~np.isnan(rvals)
+        if int(np.count_nonzero(valid_ret)) < int(min_names):
+            continue
+        ipo_ret_arr[i] = float(np.dot(caps[valid_ret], rvals[valid_ret]) / total_mcap)
+
+    out = pd.DataFrame(index=all_dates, data={"ipo_ret": ipo_ret_arr})
+    out.index.name = "date"
+    return out
 
 
 def prepare_data(
