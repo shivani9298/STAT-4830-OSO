@@ -99,14 +99,6 @@ Grid search over window length, volatility penalties, CVaR, etc. Saves the best 
 
 **Runtime**: ~1–3 hours depending on grid size.
 
-### 4. Jupyter Notebook
-
-```bash
-jupyter notebook notebooks/week4_implementation.ipynb
-```
-
-Step-by-step notebook with problem setup, implementation, and validation.
-
 ---
 
 ## Technical Approach
@@ -119,6 +111,7 @@ Step-by-step notebook with problem setup, implementation, and validation.
 - **GRU (or LSTM / Transformer / hybrid, configurable)** → last hidden state → **MLP** → **softmax** → weights on **[market, IPO]**
 - **Output constraints**: long-only, fully invested (simplex)
 - **Training loop**: `src/train.py` optimizes a multi-term portfolio objective in `src/losses.py` (return, tail risk, turnover/path penalties, etc.)
+- **Sector-head mode** (default in `scripts/run_ipo_optimizer_wrds.py`): shared encoder + one market-vs-sector-IPO head per sector using `src/multisector_data.py` and `src/multi_sector_setup.py`
 
 <img width="476" height="209" alt="image" src="https://github.com/user-attachments/assets/0b7a71dd-3994-4263-9c6f-3381f50a23f9" />
 
@@ -146,24 +139,26 @@ Step-by-step notebook with problem setup, implementation, and validation.
 ```
 .
 ├── README.md                         # This file
-├── report.md                         # Week 4 report (problem, approach, results)
-├── self_critique.md                 # OODA self-assessment
 ├── scripts/
-│   ├── run_ipo_optimizer_wrds.py   # Main WRDS training + export (GRU/LSTM/TF/...)
-│   └── ...                         # Plotting + analysis CLIs
+│   ├── run_ipo_optimizer_wrds.py    # Main WRDS training + export (GRU/LSTM/TF/...)
+│   ├── run_ipo_optimizer_wrds_gru.py
+│   ├── run_ipo_optimizer_wrds_lstm.py
+│   ├── run_ipo_optimizer_wrds_transformer.py
+│   └── ...                          # Plotting + analysis CLIs
 ├── notebooks/
-│   ├── tune_hyperparameters_wrds.py  # Hyperparameter grid search
-│   ├── week4_implementation.ipynb   # Main notebook
-│   ├── ipo_optimizer_2025_wrds.ipynb
+│   ├── tune_hyperparameters_wrds.py # Hyperparameter grid search
+│   ├── week4_implementation.ipynb
+│   ├── final_project_demo_colab.ipynb
 │   └── test_wrds.ipynb
 ├── src/
-│   ├── model.py                     # GRU/MLP allocator
+│   ├── model.py                     # GRU/LSTM/Transformer allocators
 │   ├── losses.py                    # Differentiable loss components
 │   ├── train.py                     # Training loop
 │   ├── export.py                    # Predict, stats, export
 │   ├── data_layer.py                # Rolling windows, splits
+│   ├── multisector_data.py          # Sector IPO basket construction
+│   ├── multi_sector_setup.py        # Multi-asset windowing + exports
 │   ├── wrds_data.py                 # WRDS data loading
-│   ├── utils.py                     # Misc helpers (includes OGD-related utilities)
 │   └── policy_layer.py              # Position scaling, policy rules
 ├── results/
 │   ├── recent/                      # Latest run artifacts (canonical current outputs)
@@ -172,9 +167,11 @@ Step-by-step notebook with problem setup, implementation, and validation.
 │   ├── recent/                      # Latest figures/plots
 │   └── older/                       # Historical figures grouped by commit hash
 ├── docs/
-│   └── ipo_concentration_diagnosis.md
+│   ├── reports/                     # Date-first reports
+│   ├── self_critiques/              # Date-first self-critiques
+│   └── slides/
 └── tests/
-    └── test_basic.py
+    └── test_*.py
 ```
 
 ---
@@ -201,7 +198,7 @@ Step-by-step notebook with problem setup, implementation, and validation.
 4. **Turnover display** – Very small turnover (~1e-5) rounds to 0.0000 in the summary
 5. **Two “headline” result sources** – The README’s OGD table is from `results/recent/ipo_180day_mcap_returns.csv` (a checked-in series); WRDS run metrics come from `results/recent/ipo_optimizer_summary.txt` and may differ by window + objective.
 
-See `report.md` and `self_critique.md` for details.
+See `docs/reports/` and `docs/self_critiques/` for project writeups.
 
 ---
 
