@@ -53,7 +53,7 @@ Install **PyTorch** for your CUDA build from the official index (pick the URL th
 
 ```bash
 # Example: CUDA 12.4 wheels (adjust cu118/cu121/cu124/cpu per your VM)
-uv pip install torch --index-url https://download.pytorch.org/whl/cu124
+uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
 WRDS-friendly stack (pandas/sqlalchemy pins that work with `wrds`):
@@ -68,7 +68,8 @@ uv pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplo
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-# Then install torch from pytorch.org, then:
+# Then install torch/torchvision/torchaudio from pytorch.org, then:
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplotlib numpy
 ```
 
