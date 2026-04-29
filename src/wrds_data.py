@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import builtins
 import os
+import builtins
 import pandas as pd
 from typing import Optional
 
@@ -207,9 +208,7 @@ def get_connection(
     username = wrds_username or os.environ.get("WRDS_USERNAME")
     password = wrds_password or os.environ.get("WRDS_PASSWORD")
     if username and password:
-        # The WRDS library can still prompt even when username/password are available.
-        # Force non-interactive credentials by patching the private getter on this
-        # connection instance before calling ``connect()``.
+        # Force non-interactive credentials and suppress the optional pgpass prompt.
         conn = wrds.Connection(wrds_username=username, autoconnect=False)
         conn._username = username
         conn._password = password
@@ -228,7 +227,7 @@ def get_connection(
             builtins.input = orig_input
             if callable(orig_get):
                 conn._Connection__get_user_credentials = orig_get
-        # Avoid eager metadata fetch; queries call raw_sql directly and do not need this.
+        # Skip eager metadata call; raw_sql queries work without loading library list.
         return conn
     return wrds.Connection(wrds_username=username)
 
@@ -505,10 +504,7 @@ def load_stock_prices_wrds(
             if not part.empty:
                 parts.append(part)
             if idx == 1 or idx % prog_every == 0 or idx == n_chunks:
-                print(
-                    f"[IPO] WRDS: dsf chunk {idx}/{n_chunks} complete",
-                    flush=True,
-                )
+                print(f"[IPO] WRDS: dsf chunk {idx}/{n_chunks} complete", flush=True)
         if not parts:
             return pd.DataFrame(columns=["date", "permno", "prc", "ret", "vol"])
         return (

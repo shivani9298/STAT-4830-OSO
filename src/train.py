@@ -200,9 +200,7 @@ def _nan_inf_tensor(x: torch.Tensor) -> bool:
 
 
 def _to_float_tensor(x: Any) -> torch.Tensor:
-    """
-    Convert dataset arrays to float32 tensors once (usually CPU-resident).
-    """
+    """Convert dataset arrays to float32 tensors once (usually CPU-resident)."""
     if isinstance(x, torch.Tensor):
         return x.to(dtype=torch.float32)
     return torch.as_tensor(x, dtype=torch.float32)
@@ -216,8 +214,8 @@ def _slice_batch_tensor(
     device: torch.device,
 ) -> torch.Tensor:
     """
-    Slice a batch and place it on ``device`` with ``float32`` dtype.
-    Handles both tensor-backed and numpy-backed datasets.
+    Slice a batch and place it on ``device`` with float32 dtype.
+    Supports both tensor-backed and numpy-backed datasets.
     """
     non_blocking = device.type != "cpu"
     if isinstance(x, torch.Tensor):

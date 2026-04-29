@@ -26,9 +26,7 @@ def _build_sinusoidal_positional_encoding(
     device: torch.device,
     dtype: torch.dtype,
 ) -> torch.Tensor:
-    """
-    Vectorized sinusoidal positional encoding with shape ``(1, seq_len, d_model)``.
-    """
+    """Vectorized sinusoidal positional encoding with shape ``(1, seq_len, d_model)``."""
     pe = torch.zeros(1, seq_len, d_model, device=device, dtype=dtype)
     pos = torch.arange(seq_len, device=device, dtype=dtype).unsqueeze(1)
     div = torch.exp(

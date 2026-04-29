@@ -44,7 +44,7 @@ def cvar_smooth(
     s, _ = torch.sort(port_ret, dim=0)
     q = s[k - 1] if k <= len(s) else s[0]
     temp = max(float(temperature), 1e-6)
-    # Larger logit for lower returns (left tail) relative to the alpha-quantile.
+    # Larger logit for lower returns relative to the alpha-quantile.
     tail_logits = (q - port_ret) / temp
     w = torch.softmax(tail_logits, dim=0)
     cvar = (w * port_ret).sum()
