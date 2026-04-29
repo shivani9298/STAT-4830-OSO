@@ -91,6 +91,38 @@ def loss_diversification_min_weight(weights: torch.Tensor, min_weight: float = 0
     return torch.relu(min_weight - w_min).mean()
 
 
+def loss_weight_stagnation(
+    weights: torch.Tensor,
+    min_temporal_std: float = 0.02,
+) -> torch.Tensor:
+    """
+    Penalize near-static allocations across the batch timeline.
+
+    For each asset, compute std over batch rows (time-ordered windows) and enforce a
+    minimum std floor via ``relu(min_temporal_std - std)``. Averaged across assets.
+    """
+    if weights.ndim != 2 or weights.shape[0] < 2:
+        return torch.tensor(0.0, device=weights.device, dtype=weights.dtype)
+    std_by_asset = weights.std(dim=0, unbiased=False)
+    return torch.relu(float(min_temporal_std) - std_by_asset).mean()
+
+
+def loss_weight_temporal_change(
+    weights: torch.Tensor,
+    min_step_sum_abs_change: float = 0.01,
+) -> torch.Tensor:
+    """
+    Penalize near-zero day-to-day reallocation at each consecutive row.
+
+    Computes ``sum(abs(w_t - w_{t-1}))`` per step and enforces a minimum floor via
+    ``relu(min_step_sum_abs_change - step_change)``.
+    """
+    if weights.ndim != 2 or weights.shape[0] < 2:
+        return torch.tensor(0.0, device=weights.device, dtype=weights.dtype)
+    step_sum_abs_change = torch.abs(weights[1:] - weights[:-1]).sum(dim=1)
+    return torch.relu(float(min_step_sum_abs_change) - step_sum_abs_change).mean()
+
+
 def combined_loss(
     weights: torch.Tensor,
     returns: torch.Tensor,
@@ -103,6 +135,10 @@ def combined_loss(
     target_vol_annual: float = 0.20,
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
+    lambda_weight_var: float = 0.0,
+    min_temporal_weight_std: float = 0.02,
+    lambda_weight_change: float = 0.0,
+    min_temporal_weight_change: float = 0.01,
     cvar_alpha: float = 0.05,
     mean_return_weight: float = 1.0,
     log_growth_weight: float = 0.0,
@@ -130,8 +166,13 @@ def combined_loss(
     L_vol_excess = loss_vol_excess(port_ret, target_vol_annual=target_vol_annual)
     L_path = loss_weight_path(weights, weights_prev)
     L_div = loss_diversification_min_weight(weights, min_weight=min_weight)
+    L_wvar = loss_weight_stagnation(weights, min_temporal_std=min_temporal_weight_std)
+    L_wchg = loss_weight_temporal_change(
+        weights,
+        min_step_sum_abs_change=min_temporal_weight_change,
+    )
 
-    L = (
+    raw_L = (
         float(mean_return_weight) * L_mean
         + float(log_growth_weight) * L_log
         + lambda_cvar * L_cvar
@@ -140,7 +181,15 @@ def combined_loss(
         + lambda_vol_excess * L_vol_excess
         + lambda_path * L_path
         + lambda_diversify * L_div
+        + lambda_weight_var * L_wvar
+        + lambda_weight_change * L_wchg
     )
+    # Keep optimization gradients identical while ensuring reported loss is non-negative.
+    # Use a mostly constant positive offset so epoch-to-epoch variation is preserved
+    # (unlike per-batch exact cancellation which can flatten curves).
+    base_offset = 0.01
+    loss_shift = base_offset + torch.relu(-(raw_L.detach() + base_offset)) + 1e-8
+    L = raw_L + loss_shift
     components = {
         "mean_return": -L_mean.item(),
         "mean_log1p_return": float(torch.log1p(port_ret.clamp(min=-0.999999)).mean().item()),
@@ -150,6 +199,11 @@ def combined_loss(
         "vol_excess": L_vol_excess.item(),
         "weight_path": L_path.item(),
         "diversify": L_div.item(),
+        "weight_stagnation": L_wvar.item(),
+        "weight_change_floor": L_wchg.item(),
+        "objective_raw": raw_L.item(),
+        "loss_shift": loss_shift.item(),
+        "objective_nonnegative": L.item(),
     }
     return L, components
 

@@ -21,6 +21,26 @@ from .losses import combined_loss, combined_loss_sector_heads
 LrSchedule = Literal["constant", "cosine", "plateau", "exponential"]
 
 
+def _initialize_equal_weight_logits(model: torch.nn.Module) -> None:
+    """
+    Initialize the final linear head so initial logits are all zeros.
+
+    With softmax output, zero logits produce equal weights (e.g., 50/50 for 2 assets).
+    This is a safe, architecture-agnostic initialization that only touches the
+    *last* Linear layer found in the module graph.
+    """
+    last_linear: Optional[torch.nn.Linear] = None
+    for module in model.modules():
+        if isinstance(module, torch.nn.Linear):
+            last_linear = module
+    if last_linear is None:
+        return
+    with torch.no_grad():
+        last_linear.weight.zero_()
+        if last_linear.bias is not None:
+            last_linear.bias.zero_()
+
+
 def _resolve_lr_schedule(
     lr_schedule: str | None,
     cosine_lr: bool,
@@ -167,6 +187,10 @@ def train_epoch(
     lambda_path: float = 0.01,
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
+    lambda_weight_var: float = 0.0,
+    min_temporal_weight_std: float = 0.02,
+    lambda_weight_change: float = 0.0,
+    min_temporal_weight_change: float = 0.01,
     lambda_vol_excess: float = 0.0,
     target_vol_annual: float = 0.20,
     mean_return_weight: float = 1.0,
@@ -200,6 +224,10 @@ def train_epoch(
             lambda_path=lambda_path,
             lambda_diversify=lambda_diversify,
             min_weight=min_weight,
+            lambda_weight_var=lambda_weight_var,
+            min_temporal_weight_std=min_temporal_weight_std,
+            lambda_weight_change=lambda_weight_change,
+            min_temporal_weight_change=min_temporal_weight_change,
             lambda_vol_excess=lambda_vol_excess,
             target_vol_annual=target_vol_annual,
             mean_return_weight=mean_return_weight,
@@ -233,6 +261,10 @@ def validate(
     lambda_path: float = 0.01,
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
+    lambda_weight_var: float = 0.0,
+    min_temporal_weight_std: float = 0.02,
+    lambda_weight_change: float = 0.0,
+    min_temporal_weight_change: float = 0.01,
     lambda_vol_excess: float = 0.0,
     target_vol_annual: float = 0.20,
     mean_return_weight: float = 1.0,
@@ -257,6 +289,10 @@ def validate(
             lambda_path=lambda_path,
             lambda_diversify=lambda_diversify,
             min_weight=min_weight,
+            lambda_weight_var=lambda_weight_var,
+            min_temporal_weight_std=min_temporal_weight_std,
+            lambda_weight_change=lambda_weight_change,
+            min_temporal_weight_change=min_temporal_weight_change,
             lambda_vol_excess=lambda_vol_excess,
             target_vol_annual=target_vol_annual,
             mean_return_weight=mean_return_weight,
@@ -286,6 +322,10 @@ def train_epoch_sector_heads(
     lambda_path: float = 0.01,
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
+    lambda_weight_var: float = 0.0,
+    min_temporal_weight_std: float = 0.02,
+    lambda_weight_change: float = 0.0,
+    min_temporal_weight_change: float = 0.01,
     lambda_vol_excess: float = 0.0,
     target_vol_annual: float = 0.20,
     mean_return_weight: float = 1.0,
@@ -307,6 +347,10 @@ def train_epoch_sector_heads(
         lambda_path=lambda_path,
         lambda_diversify=lambda_diversify,
         min_weight=min_weight,
+        lambda_weight_var=lambda_weight_var,
+        min_temporal_weight_std=min_temporal_weight_std,
+        lambda_weight_change=lambda_weight_change,
+        min_temporal_weight_change=min_temporal_weight_change,
         lambda_vol_excess=lambda_vol_excess,
         target_vol_annual=target_vol_annual,
         mean_return_weight=mean_return_weight,
@@ -349,6 +393,10 @@ def validate_sector_heads(
     lambda_path: float = 0.01,
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
+    lambda_weight_var: float = 0.0,
+    min_temporal_weight_std: float = 0.02,
+    lambda_weight_change: float = 0.0,
+    min_temporal_weight_change: float = 0.01,
     lambda_vol_excess: float = 0.0,
     target_vol_annual: float = 0.20,
     mean_return_weight: float = 1.0,
@@ -366,6 +414,10 @@ def validate_sector_heads(
         lambda_path=lambda_path,
         lambda_diversify=lambda_diversify,
         min_weight=min_weight,
+        lambda_weight_var=lambda_weight_var,
+        min_temporal_weight_std=min_temporal_weight_std,
+        lambda_weight_change=lambda_weight_change,
+        min_temporal_weight_change=min_temporal_weight_change,
         lambda_vol_excess=lambda_vol_excess,
         target_vol_annual=target_vol_annual,
         mean_return_weight=mean_return_weight,
@@ -402,6 +454,10 @@ def run_training_sector_heads(
     lambda_path: float = 0.01,
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
+    lambda_weight_var: float = 0.0,
+    min_temporal_weight_std: float = 0.02,
+    lambda_weight_change: float = 0.0,
+    min_temporal_weight_change: float = 0.01,
     lambda_vol_excess: float = 0.0,
     target_vol_annual: float = 0.20,
     mean_return_weight: float = 1.0,
@@ -415,6 +471,7 @@ def run_training_sector_heads(
     log_every: int = 1,
     weight_decay: float = 1e-5,
     dropout: float = 0.1,
+    output_temperature: float = 1.0,
     cosine_lr: bool = False,
     lr_schedule: str | None = None,
     lr_decay: float = 0.5,
@@ -449,6 +506,7 @@ def run_training_sector_heads(
         num_layers=num_layers,
         model_type=model_type,
         dropout=dropout,
+        output_temperature=output_temperature,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     sched_name = _resolve_lr_schedule(lr_schedule, cosine_lr)
@@ -486,6 +544,10 @@ def run_training_sector_heads(
             lambda_path=lambda_path,
             lambda_diversify=lambda_diversify,
             min_weight=min_weight,
+            lambda_weight_var=lambda_weight_var,
+            min_temporal_weight_std=min_temporal_weight_std,
+            lambda_weight_change=lambda_weight_change,
+            min_temporal_weight_change=min_temporal_weight_change,
             lambda_vol_excess=lambda_vol_excess,
             target_vol_annual=target_vol_annual,
             mean_return_weight=mean_return_weight,
@@ -502,6 +564,10 @@ def run_training_sector_heads(
             lambda_path=lambda_path,
             lambda_diversify=lambda_diversify,
             min_weight=min_weight,
+            lambda_weight_var=lambda_weight_var,
+            min_temporal_weight_std=min_temporal_weight_std,
+            lambda_weight_change=lambda_weight_change,
+            min_temporal_weight_change=min_temporal_weight_change,
             lambda_vol_excess=lambda_vol_excess,
             target_vol_annual=target_vol_annual,
             mean_return_weight=mean_return_weight,
@@ -574,6 +640,10 @@ def run_training(
     lambda_path: float = 0.01,
     lambda_diversify: float = 0.0,
     min_weight: float = 0.1,
+    lambda_weight_var: float = 0.0,
+    min_temporal_weight_std: float = 0.02,
+    lambda_weight_change: float = 0.0,
+    min_temporal_weight_change: float = 0.01,
     lambda_vol_excess: float = 0.0,
     target_vol_annual: float = 0.20,
     mean_return_weight: float = 1.0,
@@ -587,12 +657,14 @@ def run_training(
     log_every: int = 1,
     weight_decay: float = 1e-5,
     dropout: float = 0.1,
+    output_temperature: float = 1.0,
     cosine_lr: bool = False,
     lr_schedule: str | None = None,
     lr_decay: float = 0.5,
     plateau_patience: int = 4,
     min_lr: float = 1e-6,
     exponential_gamma: float = 0.99,
+    init_equal_weights: bool = False,
 ) -> tuple[torch.nn.Module, list[dict]]:
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -612,7 +684,10 @@ def run_training(
         num_layers=num_layers,
         model_type=model_type,
         dropout=dropout,
+        output_temperature=output_temperature,
     ).to(device)
+    if init_equal_weights:
+        _initialize_equal_weight_logits(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     sched_name = _resolve_lr_schedule(lr_schedule, cosine_lr)
     scheduler = _build_lr_scheduler(
@@ -648,6 +723,10 @@ def run_training(
             lambda_path=lambda_path,
             lambda_diversify=lambda_diversify,
             min_weight=min_weight,
+            lambda_weight_var=lambda_weight_var,
+            min_temporal_weight_std=min_temporal_weight_std,
+            lambda_weight_change=lambda_weight_change,
+            min_temporal_weight_change=min_temporal_weight_change,
             lambda_vol_excess=lambda_vol_excess,
             target_vol_annual=target_vol_annual,
             mean_return_weight=mean_return_weight,
@@ -664,6 +743,10 @@ def run_training(
             lambda_path=lambda_path,
             lambda_diversify=lambda_diversify,
             min_weight=min_weight,
+            lambda_weight_var=lambda_weight_var,
+            min_temporal_weight_std=min_temporal_weight_std,
+            lambda_weight_change=lambda_weight_change,
+            min_temporal_weight_change=min_temporal_weight_change,
             lambda_vol_excess=lambda_vol_excess,
             target_vol_annual=target_vol_annual,
             mean_return_weight=mean_return_weight,
