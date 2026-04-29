@@ -1,0 +1,15 @@
+Market vs Bond Optimizer - Summary
+===================================
+Assets: market=SPY, bond=AGG
+
+Total return:         18.16%
+Annualized return:    5.84%
+Annualized volatility:11.66%
+Sharpe:               0.55
+Max drawdown:         -18.13%
+Average bond weight:  37.98%
+
+Baselines:
+  Market only: Total=34.64%, Sharpe=0.67
+  Bond only:   Total=-4.62%, Sharpe=-0.19
+  Equal 50/50: Total=14.57%, Sharpe=0.50
