@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs><marker id="arr" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L6,3 z" fill="#64748b"/></marker></defs>
+<rect width="1920" height="1080" fill="#f7fafc"/>
+<text x="960" y="70" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" fill="#0f172a">Offline GRU Policy Pipeline (Left-to-Right View)</text>
+<rect x="70" y="170" width="310" height="92" rx="16" ry="16" fill="#dbeafe" stroke="#cbd5e1" stroke-width="2" />
+<text x="225.0" y="204" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Raw Inputs</text>
+<text x="225.0" y="234" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">IPO metadata, prices, returns, VIX</text>
+<rect x="400" y="170" width="310" height="92" rx="16" ry="16" fill="#e0f2fe" stroke="#cbd5e1" stroke-width="2" />
+<text x="555.0" y="204" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Normalize + Pivot</text>
+<text x="555.0" y="234" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">Deduplicate and build daily IPO matrix</text>
+<rect x="730" y="170" width="310" height="92" rx="16" ry="16" fill="#e0f2fe" stroke="#cbd5e1" stroke-width="2" />
+<text x="885.0" y="204" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">IPO Sleeve Build</text>
+<text x="885.0" y="234" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">180-day mcap-weighted IPO return</text>
+<rect x="1060" y="170" width="310" height="92" rx="16" ry="16" fill="#e0f2fe" stroke="#cbd5e1" stroke-width="2" />
+<text x="1215.0" y="204" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Align + Features</text>
+<text x="1215.0" y="234" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">Clip returns, add rolling_vol and VIX</text>
+<rect x="1390" y="170" width="310" height="92" rx="16" ry="16" fill="#e0f2fe" stroke="#cbd5e1" stroke-width="2" />
+<text x="1545.0" y="204" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Rolling Windows</text>
+<text x="1545.0" y="234" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">X(N,126,F), R(N,2), dates</text>
+<rect x="70" y="370" width="310" height="92" rx="16" ry="16" fill="#fef3c7" stroke="#cbd5e1" stroke-width="2" />
+<text x="225.0" y="404" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Chronological Split</text>
+<text x="225.0" y="434" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">Train/val by time, no random shuffle</text>
+<rect x="400" y="370" width="310" height="92" rx="16" ry="16" fill="#dcfce7" stroke="#cbd5e1" stroke-width="2" />
+<text x="555.0" y="404" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">GRU Policy</text>
+<text x="555.0" y="434" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">GRU -&gt; last hidden -&gt; MLP -&gt; softmax</text>
+<rect x="730" y="370" width="310" height="92" rx="16" ry="16" fill="#dcfce7" stroke="#cbd5e1" stroke-width="2" />
+<text x="885.0" y="404" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Weights Output</text>
+<text x="885.0" y="434" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">w=[market,IPO], simplex constrained</text>
+<rect x="1060" y="370" width="310" height="92" rx="16" ry="16" fill="#fef3c7" stroke="#cbd5e1" stroke-width="2" />
+<text x="1215.0" y="404" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Composite Objective</text>
+<text x="1215.0" y="434" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">Return/CVaR/vol/turnover/path/diversify</text>
+<rect x="1390" y="370" width="310" height="92" rx="16" ry="16" fill="#fef3c7" stroke="#cbd5e1" stroke-width="2" />
+<text x="1545.0" y="404" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Optimize + Select</text>
+<text x="1545.0" y="434" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#334155">Adam + LR + clipping + early stop</text>
+<line x1="380" y1="216.0" x2="390" y2="216.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="710" y1="216.0" x2="720" y2="216.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="1040" y1="216.0" x2="1050" y2="216.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="1370" y1="216.0" x2="1380" y2="216.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="380" y1="416.0" x2="390" y2="416.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="710" y1="416.0" x2="720" y2="416.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="1040" y1="416.0" x2="1050" y2="416.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="1370" y1="416.0" x2="1380" y2="416.0" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<line x1="1545.0" y1="262" x2="225.0" y2="360" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<rect x="620" y="550" width="680" height="110" rx="18" ry="18" fill="#f3e8ff" stroke="#cbd5e1" stroke-width="2" />
+<text x="960.0" y="592" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#0f172a">Offline Outputs</text>
+<text x="960.0" y="626" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="400" fill="#334155">Static policy weights path + validation performance summary</text>
+<line x1="1545.0" y1="462" x2="960.0" y2="542" stroke="#64748b" stroke-width="4" marker-end="url(#arr)" />
+<text x="960" y="1048" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="400" fill="#64748b">Color groups: data, preprocessing, model, training, outputs</text>
+</svg>

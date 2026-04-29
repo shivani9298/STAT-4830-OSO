@@ -1,0 +1,39 @@
+flowchart TD
+    A[Same cleaned feature pipeline as offline: aligned market/IPO returns + rolling_vol + vix] --> B[Build rolling windows X,R,dates over full timeline]
+    B --> S[Create decision schedule: warmup period, update frequency (D/W/M), optional decision lag]
+
+    subgraph M["Policy Network (Adaptive Online Regime)"]
+      M1[Input batch X: shape (B,126,F)] --> M2[GRU encoder]
+      M2 --> M3[Last hidden state]
+      M3 --> M4[MLP head]
+      M4 --> M5[Softmax]
+      M5 --> M6[Weights [market, IPO]]
+    end
+
+    S --> T{Iterate through scheduled decision dates}
+    T --> U{Is this an update date?}
+
+    U -- No --> I1[Reuse previous parameters theta_(t-1)]
+    U -- Yes --> H1[Select history up to train_end_idx using expanding history or fixed lookback]
+    H1 --> H2[Chronological split inside history: last val_frac as validation]
+    H2 --> H3[Warm-start fine-tuning for epochs_step epochs on recent history]
+    H3 --> H4[Compute candidate update metrics: first vs last val_loss and relative improvement]
+    H4 --> G{Gate decision}
+
+    G -- Cadence gate --> GA[Always accept candidate theta_t]
+    G -- Confidence gate --> GB{History size >= threshold AND improvement thresholds passed?}
+    GB -- Yes --> GA
+    GB -- No --> GR[Reject candidate and revert model/optimizer state]
+
+    GA --> I2[Apply updated parameters theta_t]
+    GR --> I1
+
+    I1 --> P[Predict allocation for current decision window]
+    I2 --> P
+    P --> R1[Apply allocation to realized return at eval date, record net/gross return and turnover]
+    R1 --> T
+
+    T --> Z[End of timeline]
+    Z --> O1[Export online path: weights, realized returns, turnover, cost, update flags]
+    Z --> O2[Export online training history and schedule diagnostics]
+    Z --> O3[Export update-benefit stats: update vs no-update forward return difference]

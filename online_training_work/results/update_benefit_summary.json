@@ -1,0 +1,12 @@
+{
+  "horizon_days": 5,
+  "n_update_points": 81,
+  "n_no_update_points": 830,
+  "mean_post_update_return": 0.0033169432021587448,
+  "mean_post_no_update_return": 0.0037335334813560347,
+  "difference_update_minus_no_update": -0.00041659027919728996,
+  "gate_mode": "confidence",
+  "n_update_attempts": 190,
+  "n_updates_applied": 81,
+  "update_accept_rate": 0.4263157894736842
+}

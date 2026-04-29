@@ -1,0 +1,26 @@
+flowchart TD
+    A[Raw inputs: SDC IPO metadata + CRSP daily prices/returns + market proxy returns + VIX] --> B[Normalize dates and remove duplicate ticker-date rows]
+    B --> C[Pivot IPO prices to daily matrix and forward/back-fill sparse gaps]
+    C --> D[Estimate shares outstanding per ticker and build 180-day market-cap-weighted IPO sleeve return]
+    D --> E[Align market and IPO sleeve on common dates; clip daily returns to robust bounds]
+    E --> F[Engineer features: market_return, ipo_return, 21d rolling_vol, vix]
+    F --> G[Create rolling windows: each sample uses past T=126 days as X; label is next-day pair [market, IPO]]
+    G --> H[Chronological split: train/validation by val_frac (no random shuffle)]
+
+    subgraph M["Policy Network (Static Offline Regime)"]
+      M1[Input batch X: shape (B,126,F)] --> M2[GRU encoder over time]
+      M2 --> M3[Take last hidden state]
+      M3 --> M4[MLP head: Linear -> ReLU -> Dropout -> Linear]
+      M4 --> M5[Softmax over 2 assets]
+      M5 --> M6[Predicted weights w_t = [w_market, w_ipo], w>=0, sum=1]
+    end
+
+    H --> M1
+    M6 --> L1[Compute portfolio return per sample: r_p = sum(w * realized_asset_returns)]
+    L1 --> L2[Objective = weighted sum of mean-return/log-growth reward + CVaR + variance/vol-excess + turnover/path + diversification penalties]
+    L2 --> L3[Train loop: backprop, gradient clipping/rescaling, Adam, LR schedule, early stopping on validation loss]
+    L3 --> L4[Keep checkpoint with best validation loss and restore best parameters]
+    L4 --> W1[Final static policy parameters theta_offline*]
+
+    W1 --> P1[Run inference on validation timeline to generate daily portfolio weights]
+    P1 --> O1[Export weights path and offline performance summary]
