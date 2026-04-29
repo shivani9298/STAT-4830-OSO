@@ -3,16 +3,19 @@
 Run IPO Portfolio Optimizer on 2005-01-01 to 2024-12-31 (see START_DATE / END_DATE).
 IPO data: SDC New Deals (all rows where ipodate is not null) + CRSP daily prices (split-adjusted).
 Market: Market-cap weighted portfolio of S&P 500 (SPY) and Dow Jones (DIA) from CRSP.
-Uses best config from results/ipo_optimizer_best_config.json if present (from tune_hyperparameters_wrds.py).
+Uses best config from ``results/recent/ipo_optimizer_best_config.json`` if present
+(from ``tune_hyperparameters_wrds.py``).
 Set ``model_type`` to ``transformer`` in ``best_config``, in gitignored ``local/ipo_optimizer_config.json``,
 or via env ``IPO_MODEL_TYPE=transformer``. When ``model_type`` is ``transformer``, ``TRANSFORMER_CONFIG``
 (lr, batch_size, lambda_cvar, hidden_size, weight_decay, dropout, cosine_lr) is merged after ``best_config``;
 ``local/ipo_optimizer_config.json`` is applied last so you can override any key.
 Set ``IPO_LOCAL_CONFIG`` to a path (repo-relative or absolute) to use a different JSON file
 for the same merge (e.g. run several transformer variants in sequence).
-Set ``IPO_EXPORT_ATTENTION=1`` to save self-attention maps (``results/ipo_optimizer_attention.npz`` and
-``figures/ipo_optimizer/<model>/attention_layer0.png``) when ``model_type`` is ``transformer``.
-Set ``IPO_SAVE_LOSS_PLOTS=1`` to also write rolling and semilogy loss figures under ``figures/ipo_optimizer/<model>/``.
+Set ``IPO_EXPORT_ATTENTION=1`` to save self-attention maps
+(``results/recent/ipo_optimizer_attention.npz`` and
+``figures/recent/ipo_optimizer/<model>/attention_layer0.png``) when ``model_type`` is ``transformer``.
+Set ``IPO_SAVE_LOSS_PLOTS=1`` to also write rolling and semilogy loss figures under
+``figures/recent/ipo_optimizer/<model>/``.
 Set ``IPO_LR_SCHEDULE`` to override JSON: ``constant``, ``cosine``, ``warmup_cosine``, ``plateau``
 (validation-driven reductions), or ``exponential`` (see ``lr_schedule`` / ``lr_decay`` in ``best_config``
 or ``DEFAULTS``). For ``warmup_cosine``, set ``warmup_epochs`` in config.
@@ -20,24 +23,25 @@ Set ``IPO_SECTOR_PORTFOLIOS=0`` for a single market-vs-IPO index (overrides ``SE
 Set ``IPO_DATA_START`` / ``IPO_DATA_END`` (e.g. ``2015-01-01`` / ``2024-12-31``) to override the default
 sample range (otherwise ``START_DATE`` / ``END_DATE`` below).
 Set ``IPO_LOSS_ROLLING_EPOCHS`` (default ``3``) for the rolling mean window when ``IPO_SAVE_LOSS_PLOTS=1``.
-Saves ``figures/ipo_optimizer/<model>/validation_returns_vs_equal_weight.png``: cumulative growth of $1 for the
+Saves ``figures/recent/ipo_optimizer/<model>/validation_returns_vs_equal_weight.png``:
+cumulative growth of $1 for the
 learned allocator vs fixed 50/50 market/IPO on **validation** windows (sector mode: mean across sleeves).
-Also writes ``results/ipo_optimizer_returns_val[.csv|_<model>.csv]`` with per-window market/IPO/50-50 returns
+Also writes ``results/recent/ipo_optimizer_returns_val[.csv|_<model>.csv]`` with per-window market/IPO/50-50 returns
 so you can replot the daily chart without retraining (see ``scripts/replot_daily_vs_50_50.py``).
-Training history is written to ``results/ipo_optimizer_training_history.json`` (latest run) and
-``results/ipo_optimizer_training_history_<model>.json``.
+Training history is written to ``results/recent/ipo_optimizer_training_history.json`` (latest run) and
+``results/recent/ipo_optimizer_training_history_<model>.json``.
 Set ``IPO_SECTOR_SOURCE`` to ``yfinance`` (Yahoo ``info['sector']``), ``compustat`` (default:
 Compustat GICS via ``comp.funda``/``comp.company`` join on ticker), or ``ccm`` / ``wrds_chain``
 (date-valid chain: ``match_date`` = max(ipo_date, first CRSP price date) → ``stocknames`` /
 ``dsenames`` → CCM → Compustat GICS; see ``docs/SECTOR_CCM_WORKFLOW.md`` and
-``src/wrds_ipo_gics_enrichment.py``). Cache files: ``results/ticker_sector_cache_*.csv``.
+``src/wrds_ipo_gics_enrichment.py``). Cache files: ``results/recent/ticker_sector_cache_*.csv``.
 Pre-build CCM labels only: ``python scripts/generate_sector_cache_ccm.py`` (defaults
 2010–2024 IPO offer dates).
 
 When SECTOR_PORTFOLIOS is True (default): sector labels (GICS or Yahoo) group IPOs into baskets. A mcap-weighted
 IPO basket is built per sector; one shared encoder (GRU/LSTM or Transformer) feeds separate two-way softmax heads (market vs
-that sector basket). Exports ``results/ipo_optimizer_weights_sector_*.csv`` and
-``results/ipo_optimizer_summary_by_sector.txt``.
+that sector basket). Exports ``results/recent/ipo_optimizer_weights_sector_*.csv`` and
+``results/recent/ipo_optimizer_summary_by_sector.txt``.
 """
 from __future__ import annotations
 
@@ -54,6 +58,8 @@ if sys.platform == "win32":
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+RESULTS_DIR = ROOT / "results" / "recent"
+FIGURES_DIR = ROOT / "figures" / "recent"
 
 try:
     from dotenv import load_dotenv
@@ -197,7 +203,7 @@ _CONFIG_OPTIONAL = frozenset(
 def load_best_config():
     """Load best config from tuning; fall back to DEFAULTS if not found."""
     cfg = {**DEFAULTS}
-    path = ROOT / "results" / "ipo_optimizer_best_config.json"
+    path = RESULTS_DIR / "ipo_optimizer_best_config.json"
     if path.exists():
         with open(path) as f:
             out = json.load(f)
@@ -419,10 +425,10 @@ def prepare_data(
     if sector_portfolios:
         _src = os.environ.get("IPO_SECTOR_SOURCE", "compustat").strip().lower()
         if _src in ("yfinance", "yahoo", "yf"):
-            cache = ROOT / "results" / "ticker_sector_cache_yfinance.csv"
+            cache = RESULTS_DIR / "ticker_sector_cache_yfinance.csv"
             sec_series = fetch_ticker_sectors(ipo_tickers, cache_path=cache, verbose=True)
         elif _src in ("ccm", "wrds_chain", "chain", "ccm_gics"):
-            cache = ROOT / "results" / "ticker_sector_cache_ccm.csv"
+            cache = RESULTS_DIR / "ticker_sector_cache_ccm.csv"
             ipo_ccm = ipo_df[["ticker", "ipo_date"]].copy()
             _fd: dict[str, pd.Timestamp] = {}
             for _tic in ipo_ccm["ticker"]:
@@ -439,7 +445,7 @@ def prepare_data(
                 verbose=True,
             )
         else:
-            cache = ROOT / "results" / "ticker_sector_cache_compustat.csv"
+            cache = RESULTS_DIR / "ticker_sector_cache_compustat.csv"
             sec_series = fetch_ticker_sectors_compustat(
                 conn, ipo_tickers, cache_path=cache, verbose=True
             )
@@ -670,8 +676,8 @@ def main():
         )
     print(f"Trained for {len(history)} epochs")
 
-    out_dir = ROOT / "results"
-    out_dir.mkdir(exist_ok=True)
+    out_dir = RESULTS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
     model_tag = str(cfg.get("model_type", "gru")).strip().lower() or "gru"
     slim_hist = slim_history_for_json(history)
     hist_path = out_dir / "ipo_optimizer_training_history.json"
@@ -681,7 +687,7 @@ def main():
             json.dump(slim_hist, f, indent=2)
     print(f"Saved training history to {hist_path} and {hist_tagged}")
 
-    fig_dir = ROOT / "figures" / "ipo_optimizer" / model_tag
+    fig_dir = FIGURES_DIR / "ipo_optimizer" / model_tag
     fig_dir.mkdir(parents=True, exist_ok=True)
     save_loss_plots = os.environ.get("IPO_SAVE_LOSS_PLOTS", "").strip().lower() in (
         "1",
@@ -727,7 +733,7 @@ def main():
                     meta={"window_len": str(cfg["window_len"]), "batch": str(n)},
                 )
                 if maps:
-                    att_dir = ROOT / "figures" / "ipo_optimizer" / model_tag
+                    att_dir = FIGURES_DIR / "ipo_optimizer" / model_tag
                     att_dir.mkdir(parents=True, exist_ok=True)
                     png_path = att_dir / "attention_layer0.png"
                     save_attention_heatmap_png(

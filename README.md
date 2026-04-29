@@ -4,14 +4,14 @@
 
 This repo contains **two related things**:
 
-- **Precomputed OGD (online) allocation benchmark** time series in `results/ipo_180day_mcap_returns.csv` (columns like `OGD_Portfolio` vs `Equal_Weight`). The “Key Results” table below is from this file (it is **not** the WRDS PyTorch run unless you re-generate the CSV with the OGD pipeline you used for the diagram).
-- **WRDS end-to-end training** for a **GRU / LSTM / Transformer** daily allocator: `scripts/run_ipo_optimizer_wrds.py` trains on rolling windows, exports weights to `results/ipo_optimizer_weights.csv`, and writes plots under `figures/ipo_optimizer/<model>/` (enable extras with `IPO_SAVE_LOSS_PLOTS=1`).
+- **Precomputed OGD (online) allocation benchmark** time series in `results/recent/ipo_180day_mcap_returns.csv` (columns like `OGD_Portfolio` vs `Equal_Weight`). The “Key Results” table below is from this file (it is **not** the WRDS PyTorch run unless you re-generate the CSV with the OGD pipeline you used for the diagram).
+- **WRDS end-to-end training** for a **GRU / LSTM / Transformer** daily allocator: `scripts/run_ipo_optimizer_wrds.py` trains on rolling windows, exports weights to `results/recent/ipo_optimizer_weights.csv`, and writes plots under `figures/recent/ipo_optimizer/<model>/` (enable extras with `IPO_SAVE_LOSS_PLOTS=1`).
 
 **Data**: IPO + market return construction uses **WRDS** (SDC + CRSP) in the training scripts; the benchmark CSV is treated as a fixed artifact in-repo for the diagram-aligned headline numbers.
 
 ## Key Results (OGD “learned” vs 50/50 baseline)
 
-These numbers match the project diagram / `results/ipo_180day_mcap_returns.csv` for **2022-09-30 → 2024-01-22** (271 trading days): **Learned = `OGD_Portfolio`**, **50/50 = `Equal_Weight`**, with single-asset sleeves **SPY** and **IPO** for context.
+These numbers match the project diagram / `results/recent/ipo_180day_mcap_returns.csv` for **2022-09-30 → 2024-01-22** (271 trading days): **Learned = `OGD_Portfolio`**, **50/50 = `Equal_Weight`**, with single-asset sleeves **SPY** and **IPO** for context.
 
 | Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max Drawdown |
 |----------|--------------|-------------|----------|--------|--------------|
@@ -82,9 +82,9 @@ This script:
 
 1. Connects to WRDS and loads IPO data from SDC + CRSP
 2. Builds the IPO index and market returns
-3. Trains a learned allocator (`model_type` is typically **`gru`**, but can be **`lstm` / `transformer` / `hybrid`** via `results/ipo_optimizer_best_config.json`, a local override JSON, or `IPO_MODEL_TYPE=...` — see the header of `scripts/run_ipo_optimizer_wrds.py`)
-4. Exports weights to `results/ipo_optimizer_weights.csv` and a summary to `results/ipo_optimizer_summary.txt`
-5. Saves figures under `figures/ipo_optimizer/<model>/` (see `IPO_SAVE_LOSS_PLOTS` in `run_ipo_optimizer_wrds.py`)
+3. Trains a learned allocator (`model_type` is typically **`gru`**, but can be **`lstm` / `transformer` / `hybrid`** via `results/recent/ipo_optimizer_best_config.json`, a local override JSON, or `IPO_MODEL_TYPE=...` — see the header of `scripts/run_ipo_optimizer_wrds.py`)
+4. Exports weights to `results/recent/ipo_optimizer_weights.csv` and a summary to `results/recent/ipo_optimizer_summary.txt`
+5. Saves figures under `figures/recent/ipo_optimizer/<model>/` (see `IPO_SAVE_LOSS_PLOTS` in `run_ipo_optimizer_wrds.py`)
 
 **Runtime**: ~2–3 minutes.
 
@@ -94,7 +94,7 @@ This script:
 python notebooks/tune_hyperparameters_wrds.py
 ```
 
-Grid search over window length, volatility penalties, CVaR, etc. Saves the best config to `results/ipo_optimizer_best_config.json`; `scripts/run_ipo_optimizer_wrds.py` will use it on the next run.
+Grid search over window length, volatility penalties, CVaR, etc. Saves the best config to `results/recent/ipo_optimizer_best_config.json`; `scripts/run_ipo_optimizer_wrds.py` will use it on the next run.
 
 **Runtime**: ~1–3 hours depending on grid size.
 
@@ -121,10 +121,10 @@ Step-by-step notebook with problem setup, implementation, and validation.
 
 <img width="476" height="209" alt="image" src="https://github.com/user-attachments/assets/0b7a71dd-3994-4263-9c6f-3381f50a23f9" />
 
-#### OGD baseline (diagram / `ipo_180day_mcap_returns.csv`)
+#### OGD baseline (diagram / `results/recent/ipo_180day_mcap_returns.csv`)
 
 - The repo also includes an **online convex optimization** style allocator (see `docs/development_log.md` and `tests/test_basic.py` references to `OnlineOGDAllocator`).
-- The headline **OGD vs 50/50** table above is taken directly from the **precomputed** daily return series in `results/ipo_180day_mcap_returns.csv`.
+- The headline **OGD vs 50/50** table above is taken directly from the **precomputed** daily return series in `results/recent/ipo_180day_mcap_returns.csv`.
 
 
 ### Data Sources
@@ -165,13 +165,11 @@ Step-by-step notebook with problem setup, implementation, and validation.
 │   ├── utils.py                     # Misc helpers (includes OGD-related utilities)
 │   └── policy_layer.py              # Position scaling, policy rules
 ├── results/
-│   ├── ipo_180day_mcap_returns.csv  # OGD vs baselines (diagram headline table)
-│   ├── ipo_optimizer_weights.csv    # Learned model daily weights (WRDS run)
-│   ├── ipo_optimizer_summary.txt    # Learned model summary
-│   └── ipo_optimizer_best_config.json  # Best tuning config
+│   ├── recent/                      # Latest run artifacts (canonical current outputs)
+│   └── older/                       # Historical artifacts grouped by commit hash
 ├── figures/
-│   ├── ipo_optimizer/<model>/       # Plots for WRDS training runs
-│   └── ...                          # Validation analysis plots (optional scripts)
+│   ├── recent/                      # Latest figures/plots
+│   └── older/                       # Historical figures grouped by commit hash
 ├── docs/
 │   └── ipo_concentration_diagnosis.md
 └── tests/
@@ -200,7 +198,7 @@ Step-by-step notebook with problem setup, implementation, and validation.
 2. **Stability / near-constant weights (sometimes)** – Depending on the objective/penalties, the learned allocator can become **nearly static** day-to-day; this is a behavior to check against baselines, not a guaranteed property.
 3. **Survivorship bias** – IPO index excludes delisted stocks
 4. **Turnover display** – Very small turnover (~1e-5) rounds to 0.0000 in the summary
-5. **Two “headline” result sources** – The README’s OGD table is from `results/ipo_180day_mcap_returns.csv` (a checked-in series); WRDS run metrics come from `results/ipo_optimizer_summary.txt` and may differ by window + objective.
+5. **Two “headline” result sources** – The README’s OGD table is from `results/recent/ipo_180day_mcap_returns.csv` (a checked-in series); WRDS run metrics come from `results/recent/ipo_optimizer_summary.txt` and may differ by window + objective.
 
 See `report.md` and `self_critique.md` for details.
 
