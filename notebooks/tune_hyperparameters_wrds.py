@@ -40,7 +40,6 @@ from itertools import product
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 RESULTS_DIR = ROOT / "results" / "recent"
 FIGURES_DIR = ROOT / "figures" / "recent"
 
@@ -54,7 +53,7 @@ except ImportError:
 import numpy as np
 import torch
 
-from run_ipo_optimizer_wrds import (
+from scripts.run_ipo_optimizer_wrds import (
     get_connection,
     prepare_data,
     sector_portfolios_effective,

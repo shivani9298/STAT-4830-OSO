@@ -5,9 +5,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT))
 
-from run_ipo_optimizer_wrds import main as run_main
+from scripts.run_ipo_optimizer_wrds import main as run_main
 
 
 if __name__ == "__main__":

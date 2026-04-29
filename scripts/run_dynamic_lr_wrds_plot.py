@@ -48,7 +48,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from run_ipo_optimizer_wrds import (
+from scripts.run_ipo_optimizer_wrds import (
     TEST_START as DEFAULT_TEST_START,
     VAL_START as DEFAULT_VAL_START,
     close_wrds_connection,

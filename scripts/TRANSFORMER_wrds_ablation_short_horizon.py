@@ -46,7 +46,7 @@ except ImportError:
 import numpy as np
 import torch
 
-from run_ipo_optimizer_wrds import (
+from scripts.run_ipo_optimizer_wrds import (
     DEFAULTS,
     TRANSFORMER_CONFIG,
     close_wrds_connection,

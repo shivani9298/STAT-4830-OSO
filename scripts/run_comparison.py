@@ -192,7 +192,7 @@ def fetch_split_ipo_data(split_df: pd.DataFrame, max_ipos: int) -> list:
     Fetch price data + shares outstanding for up to max_ipos IPOs in a split.
     Uses fetch_ipo_data from build_ipo_index (calls yf.Ticker().info for shares).
     """
-    from build_ipo_index import fetch_ipo_data
+    from scripts.build_ipo_index import fetch_ipo_data
 
     subset = split_df.head(max_ipos)
     results = []
@@ -224,7 +224,7 @@ def run_index_model(
     Run market-cap / optimizer / GRU index model.
     Returns index_df (columns: date, daily_return) — empty DataFrame if no data.
     """
-    from build_ipo_index import build_ipo_index
+    from scripts.build_ipo_index import build_ipo_index
 
     if not ipo_data:
         return pd.DataFrame(columns=["date", "daily_return"])

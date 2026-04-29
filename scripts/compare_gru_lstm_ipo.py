@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from run_ipo_optimizer_wrds import load_best_config, prepare_data
+from scripts.run_ipo_optimizer_wrds import load_best_config, prepare_data
 from src.data_layer import build_rolling_windows, train_val_split
 from src.export import predict_weights, portfolio_stats
 from src.train import run_training

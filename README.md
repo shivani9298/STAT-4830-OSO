@@ -85,7 +85,7 @@ This script:
 2. Builds the IPO index and market returns
 3. Trains a learned allocator (`model_type` is typically **`gru`**, but can be **`lstm` / `transformer` / `hybrid`** via `results/recent/ipo_optimizer_best_config.json`, a local override JSON, or `IPO_MODEL_TYPE=...` — see the header of `scripts/run_ipo_optimizer_wrds.py`)
 4. Exports weights to `results/recent/ipo_optimizer_weights.csv` and a summary to `results/recent/ipo_optimizer_summary.txt`
-5. Saves figures under `figures/recent/ipo_optimizer/<model>/` (see `IPO_SAVE_LOSS_PLOTS` in `run_ipo_optimizer_wrds.py`)
+5. Saves figures under `figures/recent/ipo_optimizer/<model>/` (see `IPO_SAVE_LOSS_PLOTS` in `scripts/run_ipo_optimizer_wrds.py`)
 
 **Runtime**: ~2–3 minutes.
 

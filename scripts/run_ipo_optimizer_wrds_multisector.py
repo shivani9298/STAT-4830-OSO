@@ -22,7 +22,7 @@ import torch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from run_ipo_optimizer_wrds import (  # noqa: E402
+from scripts.run_ipo_optimizer_wrds import (  # noqa: E402
     DEFAULTS,
     END_DATE,
     SECTOR_PORTFOLIOS,

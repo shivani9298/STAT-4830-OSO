@@ -69,9 +69,8 @@ from pathlib import Path
 
 ROOT = Path(os.environ["ROOT_DIR_EXPORT"])
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 os.chdir(ROOT)
-from run_ipo_optimizer_wrds import DEFAULTS, load_best_config
+from scripts.run_ipo_optimizer_wrds import DEFAULTS, load_best_config
 
 print(
     "DEFAULTS snippet:",

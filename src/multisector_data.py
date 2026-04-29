@@ -120,7 +120,7 @@ def prepare_multisector_data(
         sector_ret_cols: column names for sector return columns in df
         sector_portfolios: True
     """
-    from run_ipo_optimizer_wrds import build_ipo_index_mcap  # local import avoids cycle at module load
+    from scripts.run_ipo_optimizer_wrds import build_ipo_index_mcap  # local import avoids cycle at module load
 
     ipo_csv = load_ipo_data_from_sdc_wrds(
         conn, start=start, end=end, library="sdc", price_source="crsp"

@@ -46,7 +46,7 @@ def main() -> int:
         return 1
 
     print("[pipeline] Running run_ipo_optimizer_wrds.main() ...", flush=True)
-    import run_ipo_optimizer_wrds as runner
+    import scripts.run_ipo_optimizer_wrds as runner
 
     code = runner.main()
     if code != 0:
