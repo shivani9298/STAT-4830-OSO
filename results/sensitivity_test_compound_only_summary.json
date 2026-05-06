@@ -1,0 +1,59 @@
+{
+  "objective": "compound_growth_only",
+  "n_tests": 7,
+  "top_by_mean_abs_delta_ipo_weight": [
+    {
+      "test": "all_features_zeroed",
+      "mean_abs_delta_ipo_weight": 0.4379557967185974,
+      "max_abs_delta_ipo_weight": 0.43795686960220337,
+      "std_delta_ipo_weight": 3.725305930402101e-07,
+      "mean_signed_delta_ipo_weight": -0.4379557967185974
+    },
+    {
+      "test": "feature_plus_1std::market_return",
+      "mean_abs_delta_ipo_weight": 4.07870516028197e-07,
+      "max_abs_delta_ipo_weight": 4.76837158203125e-07,
+      "std_delta_ipo_weight": 6.209411651525443e-08,
+      "mean_signed_delta_ipo_weight": 4.07870516028197e-07
+    },
+    {
+      "test": "time_shuffle_within_window",
+      "mean_abs_delta_ipo_weight": 3.8446555095106305e-07,
+      "max_abs_delta_ipo_weight": 1.3113021850585938e-06,
+      "std_delta_ipo_weight": 4.877693413618545e-07,
+      "mean_signed_delta_ipo_weight": 3.370314871631308e-08
+    },
+    {
+      "test": "feature_plus_1std::ipo_return",
+      "mean_abs_delta_ipo_weight": 1.2981954000679252e-07,
+      "max_abs_delta_ipo_weight": 2.384185791015625e-07,
+      "std_delta_ipo_weight": 4.224551375386909e-08,
+      "mean_signed_delta_ipo_weight": 1.2981954000679252e-07
+    },
+    {
+      "test": "feature_plus_1std::rolling_vol",
+      "mean_abs_delta_ipo_weight": 3.744794341287161e-08,
+      "max_abs_delta_ipo_weight": 1.1920928955078125e-07,
+      "std_delta_ipo_weight": 5.4996299070353416e-08,
+      "mean_signed_delta_ipo_weight": 3.744794341287161e-08
+    },
+    {
+      "test": "global_noise_0.1std",
+      "mean_abs_delta_ipo_weight": 2.2156699586162176e-08,
+      "max_abs_delta_ipo_weight": 1.1920928955078125e-07,
+      "std_delta_ipo_weight": 5.0823700803448446e-08,
+      "mean_signed_delta_ipo_weight": 1.560330975536317e-09
+    },
+    {
+      "test": "feature_plus_1std::vix",
+      "mean_abs_delta_ipo_weight": 0.0,
+      "max_abs_delta_ipo_weight": 0.0,
+      "std_delta_ipo_weight": 0.0,
+      "mean_signed_delta_ipo_weight": 0.0
+    }
+  ],
+  "baseline_ipo_weight_mean": 0.9889413118362427,
+  "baseline_ipo_weight_min": 0.9889401793479919,
+  "baseline_ipo_weight_max": 0.9889423847198486,
+  "epochs_trained": 80
+}

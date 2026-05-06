@@ -1,0 +1,3 @@
+variant,lambda_diversify,total_return,ann_return,ann_vol,sharpe,max_drawdown,avg_ipo_weight,summary_path
+no_diversify,0.0,0.43848185201722845,0.6156027514504312,0.24806744634532601,2.0586157260979823,-0.1288736566123463,0.34613874554634094,/Users/oliu/STAT-4830-OSO/results/ipo_optimizer_summary_loss_subset_no_diversify.txt
+with_diversify,0.1,0.42980856460660166,0.602762835378478,0.24371311886152908,2.0582945070341907,-0.1265829390021883,0.33651646971702576,/Users/oliu/STAT-4830-OSO/results/ipo_optimizer_summary_loss_subset_with_diversify.txt
