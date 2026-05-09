@@ -58,7 +58,7 @@ git clone https://github.com/shivani9298/STAT-4830-OSO.git
 cd STAT-4830-OSO
 ```
 
-**Using uv (recommended, including VM/GPU)**
+**Using uv (recommended)**
 
 Install uv if needed: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
@@ -67,18 +67,24 @@ uv venv .venv
 source .venv/bin/activate
 ```
 
-Install **PyTorch** for your CUDA build from the official index (pick the URL that matches your driver; examples below—see [pytorch.org](https://pytorch.org) for current wheels):
+Install **PyTorch** based on your platform:
 
 ```bash
-# Example: CUDA 12.4 wheels (adjust cu118/cu121/cu124/cpu per your VM)
+# macOS (Apple Silicon or Intel)
+uv pip install torch
+
+# Linux/Windows with NVIDIA CUDA 12.4 (example)
+# Use pytorch.org to choose the right index URL for your CUDA version.
 uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
-WRDS-friendly stack (pandas/sqlalchemy pins that work with `wrds`):
+Install WRDS + data stack:
 
 ```bash
-uv pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplotlib numpy
+uv pip install pandas==2.1.4 "sqlalchemy>=2.0.36" wrds==3.1.6 python-dotenv matplotlib numpy
 ```
+
+Note: `wrds==3.1.6` may print a dependency warning about `sqlalchemy<2`; this repository includes a compatibility patch in `src/wrds_data.py` and requires SQLAlchemy 2.x for current pandas behavior.
 
 **Using pip only**
 
@@ -86,10 +92,16 @@ uv pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplo
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-# Then install torch/torchvision/torchaudio from pytorch.org, then:
+# macOS (Apple Silicon or Intel)
+pip install torch
+
+# Linux/Windows with NVIDIA CUDA 12.4 (example)
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-pip install pandas==2.1.4 sqlalchemy==1.4.54 wrds==3.1.6 python-dotenv matplotlib numpy
+
+pip install pandas==2.1.4 "sqlalchemy>=2.0.36" wrds==3.1.6 python-dotenv matplotlib numpy
 ```
+
+Note: `wrds==3.1.6` may print a dependency warning about `sqlalchemy<2`; this repository includes a compatibility patch in `src/wrds_data.py` and requires SQLAlchemy 2.x for current pandas behavior.
 
 ### 2. Run the Optimizer
 
