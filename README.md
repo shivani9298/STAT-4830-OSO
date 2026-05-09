@@ -67,41 +67,53 @@ uv venv .venv
 source .venv/bin/activate
 ```
 
-Install **PyTorch** based on your platform:
+Install **PyTorch** (choose one command for your platform):
 
 ```bash
 # macOS (Apple Silicon or Intel)
 uv pip install torch
+```
 
-# Linux/Windows with NVIDIA CUDA 12.4 (example)
-# Use pytorch.org to choose the right index URL for your CUDA version.
+```bash
+# Linux/Windows + NVIDIA CUDA 12.4 (example)
+# Use pytorch.org to pick the exact CUDA index URL for your machine.
 uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 ```
 
 Install WRDS + data stack:
 
 ```bash
-uv pip install pandas==2.1.4 "sqlalchemy>=2.0.36" wrds==3.1.6 python-dotenv matplotlib numpy
+uv pip install -r requirements.txt
 ```
-
-Note: `wrds==3.1.6` may print a dependency warning about `sqlalchemy<2`; this repository includes a compatibility patch in `src/wrds_data.py` and requires SQLAlchemy 2.x for current pandas behavior.
 
 **Using pip only**
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -U pip
-# macOS (Apple Silicon or Intel)
-pip install torch
-
-# Linux/Windows with NVIDIA CUDA 12.4 (example)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-
-pip install pandas==2.1.4 "sqlalchemy>=2.0.36" wrds==3.1.6 python-dotenv matplotlib numpy
+python -m pip install --upgrade pip
 ```
 
-Note: `wrds==3.1.6` may print a dependency warning about `sqlalchemy<2`; this repository includes a compatibility patch in `src/wrds_data.py` and requires SQLAlchemy 2.x for current pandas behavior.
+Install **PyTorch** (choose one command for your platform):
+
+```bash
+# macOS (Apple Silicon or Intel)
+pip install torch
+```
+
+```bash
+# Linux/Windows + NVIDIA CUDA 12.4 (example)
+# Use pytorch.org to pick the exact CUDA index URL for your machine.
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
+Install WRDS + data stack:
+
+```bash
+pip install -r requirements.txt
+```
+
+Why this matters: `wrds==3.1.6` declares `sqlalchemy<2`, which conflicts with this repo's SQLAlchemy 2.x requirement in `src/wrds_data.py`.
 
 ### 2. Run the Optimizer
 

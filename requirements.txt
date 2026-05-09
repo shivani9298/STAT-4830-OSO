@@ -1,0 +1,6 @@
+pandas>=2.2,<2.3
+sqlalchemy>=2.0.36
+wrds>=3.5.0
+python-dotenv
+matplotlib
+numpy
