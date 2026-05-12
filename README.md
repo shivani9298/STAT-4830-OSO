@@ -73,7 +73,7 @@ The `.env` file is gitignored — create it manually after cloning. The `python-
 
 ```bash
 git clone https://github.com/shivani9298/STAT-4830-OSO.git
-cd STAT-4830-OSO
+cd STAT-4830-OSO          # ← all subsequent commands run from inside here
 ```
 
 **Using uv (recommended)**
@@ -81,6 +81,7 @@ cd STAT-4830-OSO
 Install uv if needed: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
 ```bash
+# Run these from inside STAT-4830-OSO/ (where requirements.txt lives)
 uv venv .venv
 source .venv/bin/activate
 ```

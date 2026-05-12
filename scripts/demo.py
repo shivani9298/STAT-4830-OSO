@@ -278,9 +278,19 @@ def prep_offline_full_objective() -> Optional[AssetPanel]:
         notes=(
             "Weights are the mean across all 11 sector sleeve heads "
             "(`results/recent/ipo_optimizer_weights_val_sector_mean.csv`). "
-            "Returns use the overall IPO index as a proxy for each sector basket — "
-            "the slide figure uses sector-specific IPO baskets (not stored separately), "
-            "so model total here (~48%) is a close approximation of the slide value (49.25%)."
+            "Returns use the **aggregate IPO index** as a proxy for each sector basket — "
+            "the report/slides use the actual per-sector IPO baskets computed during training "
+            "(not stored separately as a single CSV), so the model total here (~48%) is a close "
+            "approximation of the slide value (49.25%).\n\n"
+            "**Why the annualized return and Sharpe look different from the report:**\n"
+            "The report quotes 45.12% ann and Sharpe 2.30. Those figures were computed during "
+            "training on the per-sector baskets over a specific validation window. The CSV artifact "
+            "(`ipo_optimizer_returns_val.csv`) covers the full 2022–2024 period (~2.93 years), and "
+            "the demo annualizes the blended model return (≈88% market / 12% IPO) over that longer "
+            "window — producing a lower annualized figure. The total-return gap (~49% vs ~48%) comes "
+            "from the per-sector vs aggregate IPO proxy; the ann/Sharpe gap comes from the different "
+            "date window used to compute those figures during training. Neither is an error — they are "
+            "different views of the same model evaluated at different aggregation levels."
         ),
     )
 
