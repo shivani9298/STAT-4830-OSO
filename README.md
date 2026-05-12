@@ -63,7 +63,7 @@ The online cadence model re-trains on a fixed schedule. It significantly underpe
 - `WRDS_USERNAME` and `WRDS_PASSWORD` set in a `.env` file at the repo root (or exported in your shell):
 
 ```
-WRDS_USERNAME=your_pennkey
+WRDS_USERNAME=your_username
 WRDS_PASSWORD=your_password
 ```
 
