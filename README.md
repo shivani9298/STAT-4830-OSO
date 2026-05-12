@@ -5,12 +5,25 @@
 This repo contains **three related things**:
 
 - **Precomputed OGD (online) allocation benchmark** time series in `results/recent/ipo_180day_mcap_returns.csv` (columns like `OGD_Portfolio` vs `Equal_Weight`). The OGD table below covers the full file range.
-- **WRDS end-to-end training** for a **GRU / LSTM / Transformer** daily allocator: `scripts/run_ipo_optimizer_wrds.py` trains on rolling windows, exports weights to `results/recent/ipo_optimizer_weights.csv`, and writes plots under `figures/recent/ipo_optimizer/<model>/` (enable extras with `IPO_SAVE_LOSS_PLOTS=1`).
+- **WRDS end-to-end training** for a **GRU / LSTM / Transformer** daily allocator: `scripts/run_ipo_optimizer_wrds.py` trains on rolling windows in **sector multi-head mode** (default), exports per-sector weights to `results/recent/ipo_optimizer_weights_sector_*.csv` and the sector-mean to `results/recent/ipo_optimizer_weights_val_sector_mean.csv`, and writes plots under `figures/recent/ipo_optimizer/<model>/` (enable extras with `IPO_SAVE_LOSS_PLOTS=1`).
 - **Compound-only loss experiments**: offline and online models trained with a pure log-growth objective (no CVaR / vol / turnover penalties), revealing near-100% IPO allocation policies. Scripts in `scripts/compound_only/`, results in `results/`, figures in `figures/experiments/`.
 
 **Data**: IPO + market return construction uses **WRDS** (SDC + CRSP) in the training scripts; the benchmark CSV is treated as a fixed artifact in-repo.
 
 ## Key Results
+
+### Offline GRU allocator — full objective (`results/recent/ipo_optimizer_weights_val_sector_mean.csv` + `results/recent/ipo_optimizer_returns_val.csv`)
+
+Mean across **11 sector sleeve heads**, validation period shown in `figures/recent/ipo_optimizer/gru/validation_returns_vs_equal_weight.png`. This is what the Streamlit demo shows in the **IPO — full objective** tab and matches the final slides.
+
+| Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max Drawdown |
+|----------|--------------|-------------|----------|--------|--------------|
+| **Offline GRU (sector mean)** | **49.25%** | **45.12%** | 16.82% | **2.30** | **-10.47%** |
+| Equal 50/50 | 82.90% | 75.32% | 30.86% | 1.97 | -25.99% |
+| Market only | 27.07% | 24.95% | 14.36% | 1.62 | -9.97% |
+| IPO only | 145.92% | 130.89% | 54.95% | 1.79 | -41.13% |
+
+The full-objective GRU (sector mean) keeps average IPO weight ~12%, trading raw return for meaningfully lower drawdown and volatility vs a naïve 50/50.
 
 ### OGD baseline vs 50/50 (`results/recent/ipo_180day_mcap_returns.csv`)
 
@@ -25,20 +38,18 @@ Full file: **2020-07-06 → 2025-01-14** (1 082 trading days).
 
 The OGD allocator keeps conservative IPO exposure, trading high absolute return for substantially lower drawdown and volatility vs the 50/50 benchmark.
 
-### Online compound-only GRU (`results/recent/ipo_optimizer_summary.txt`)
+### Online cadence-gated GRU (`online_training_work/results/online_path_cadence_lb504.csv`)
 
-Online model trained with pure compound-growth objective (no regularization), evaluated on **2021-07-19 → 2024-12-31** (870 trading days):
+Online model with cadence-based update gating, evaluated on **2021-05-18 → 2024-12-31** (912 trading days):
 
 | Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max Drawdown |
 |----------|--------------|-------------|----------|--------|--------------|
-| **Online compound (net)** | **85.94%** | **18.69%** | 19.24% | **0.99** | **-30.97%** |
-| Offline static (same dates) | 108.98% | 22.59% | 18.31% | 1.20 | -26.07% |
-| Best static (train) | 165.50% | 30.97% | 21.19% | 1.38 | -29.88% |
-| Equal 50/50 | 298.22% | 46.49% | 27.46% | 1.52 | -36.30% |
-| Market only | 45.98% | 11.02% | 16.04% | 0.73 | -23.69% |
-| IPO only | 860.47% | 86.84% | 45.22% | 1.59 | -52.92% |
+| **Online cadence (net)** | **91.45%** | **19.66%** | 19.37% | **1.01** | **-28.89%** |
+| Equal 50/50 | 298.22% | 46.49% | 27.46% | 1.69 | -36.30% |
+| Market only | 45.98% | 11.02% | 16.04% | 0.69 | -23.69% |
+| IPO only | 860.47% | 86.84% | 45.22% | 1.92 | -52.92% |
 
-Removing all regularization collapses the policy toward near-100% IPO allocation, producing high returns with high volatility. The offline static model consistently outperforms the online version on this window, suggesting online updates add noise rather than signal under this objective. See `figures/online_evaluation/` and `figures/experiments/` for allocation trajectory and return comparison plots.
+The online cadence model re-trains on a fixed schedule. It significantly underperforms the IPO-only and 50/50 benchmarks because the full multi-term objective (CVaR, vol, turnover penalties) keeps IPO exposure conservative (~12% avg weight). See `figures/online_evaluation/` for return trajectories and weight paths.
 
 ---
 
@@ -126,7 +137,7 @@ This script:
 1. Connects to WRDS and loads IPO data from SDC + CRSP
 2. Builds the IPO index and market returns
 3. Trains a learned allocator (`model_type` is typically **`gru`**, but can be **`lstm` / `transformer` / `hybrid`** via `results/recent/ipo_optimizer_best_config.json`, a local override JSON, or `IPO_MODEL_TYPE=...` — see the header of `scripts/run_ipo_optimizer_wrds.py`)
-4. Exports weights to `results/recent/ipo_optimizer_weights.csv` and a summary to `results/recent/ipo_optimizer_summary.txt`
+4. Exports per-sector weights to `results/recent/ipo_optimizer_weights_sector_*.csv`, the sector-mean weights to `results/recent/ipo_optimizer_weights_val_sector_mean.csv`, and a per-sector summary to `results/recent/ipo_optimizer_summary_by_sector.txt`
 5. Saves figures under `figures/recent/ipo_optimizer/<model>/` (see `IPO_SAVE_LOSS_PLOTS` in `scripts/run_ipo_optimizer_wrds.py`)
 
 **Runtime**: ~2–3 minutes.
@@ -217,7 +228,6 @@ Grid search over window length, volatility penalties, CVaR, etc. Saves the best 
 ├── notebooks/
 │   ├── tune_hyperparameters_wrds.py # Hyperparameter grid search
 │   ├── week4_implementation.ipynb
-│   ├── final_project_demo_colab.ipynb
 │   └── test_wrds.ipynb
 ├── src/
 │   ├── model.py                     # GRU/LSTM/Transformer allocators
@@ -273,7 +283,7 @@ Grid search over window length, volatility penalties, CVaR, etc. Saves the best 
 2. **Stability / near-constant weights (sometimes)** – Depending on the objective/penalties, the learned allocator can become **nearly static** day-to-day; this is a behavior to check against baselines, not a guaranteed property.
 3. **Survivorship bias** – IPO index excludes delisted stocks
 4. **Turnover display** – Very small turnover (~1e-5) rounds to 0.0000 in the summary
-5. **Two “headline” result sources** – The OGD table is from `results/recent/ipo_180day_mcap_returns.csv` (precomputed series); the online compound model table is from `results/recent/ipo_optimizer_summary.txt` (WRDS PyTorch run, different window and objective).
+5. **Three “headline” result sources** – The offline GRU table uses `results/recent/ipo_optimizer_weights_val_sector_mean.csv` + `results/recent/ipo_optimizer_returns_val.csv` (sector multi-head run, 2022–2024 validation set); the OGD table uses `results/recent/ipo_180day_mcap_returns.csv` (precomputed series, 2020–2025); the online cadence table uses `online_training_work/results/online_path_cadence_lb504.csv` (2021–2024). These three experiments run on different date windows and objectives — numbers are not directly comparable.
 6. **Compound-only policy collapse** – With all regularization removed, the offline model learns near-100% IPO allocation. This is optimal under log-growth alone but ignores tail risk entirely.
 
 See `docs/reports/2026-05-05-final-written-report.md` and `docs/self_critiques/` for full writeups.

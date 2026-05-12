@@ -74,11 +74,14 @@ POLICY_INTERPRETATION_COMMODITIES = (
     "leaning into commodities **paid off** for the risk of **not** staying evenly spread."
 )
 
-# Prefer a dedicated full-objective WRDS export; fall back to an archived path if present.
+# Prefer a dedicated full-objective WRDS export; fall back to the cadence online run
+# (full multi-term objective, AB update gate experiment, 2021-05-18 → 2024-12-31).
 ONLINE_FULL_OBJECTIVE_PATH_CANDIDATES: list[str] = [
-    "results/ipo_optimizer_online_path_full_objective.csv",
-    "results/ipo_optimizer_online_wrds_full_loss.csv",
-    "results/older/c0d127c/ipo_optimizer_online_path.csv",
+    "results/ipo_optimizer_online_path_full_objective.csv",   # reserved: place a new full-obj run here to override
+    "results/ipo_optimizer_online_wrds_full_loss.csv",        # reserved: alternate override path
+    "online_training_work/results/online_path_cadence_lb504.csv",   # cadence-gated online model (primary fallback)
+    "online_training_work/results/ipo_optimizer_online_path.csv",   # confidence online model (secondary fallback)
+    "results/older/c0d127c/ipo_optimizer_online_path.csv",          # archived fallback
 ]
 
 # Compound-growth-only loss: prefer a dedicated export so a later full-objective WRDS run
@@ -269,10 +272,16 @@ def prep_online_panel_from_ipo_path_csv(path: Path, model_label: str, notes: str
 def prep_offline_full_objective() -> Optional[AssetPanel]:
     ret_candidates = ["results/recent/ipo_optimizer_returns_val.csv", "results/older/ipo_180day_mcap_returns.csv"]
     return _prep_ipo_from_weights_and_returns(
-        "results/recent/ipo_optimizer_weights_val.csv",
+        "results/recent/ipo_optimizer_weights_val_sector_mean.csv",
         ret_candidates,
-        model_label="Offline (full objective)",
-        notes="Offline GRU trained with the full objective on validation-period weights.",
+        model_label="Offline GRU (mean across 11 sector sleeves)",
+        notes=(
+            "Weights are the mean across all 11 sector sleeve heads "
+            "(`results/recent/ipo_optimizer_weights_val_sector_mean.csv`). "
+            "Returns use the overall IPO index as a proxy for each sector basket — "
+            "the slide figure uses sector-specific IPO baskets (not stored separately), "
+            "so model total here (~48%) is a close approximation of the slide value (49.25%)."
+        ),
     )
 
 
@@ -281,9 +290,10 @@ def prep_online_full_objective() -> Optional[AssetPanel]:
     if p is None:
         return None
     notes = (
+        f"**Source file in use:** `{p}`\n\n"
         "Online path uses `net_ret` from the WRDS-style online CSV. "
-        "Place a full-objective run at `results/ipo_optimizer_online_path_full_objective.csv` "
-        "to override fallback artifacts."
+        "To override with a new full-objective run, save it to "
+        "`results/ipo_optimizer_online_path_full_objective.csv`."
     )
     return prep_online_panel_from_ipo_path_csv(p, model_label="Online (full objective)", notes=notes)
 
@@ -616,7 +626,7 @@ def main() -> None:
     with tab_full:
         st.markdown("Compare **offline** and **online** IPO models trained with the **full** objective. Scroll for performance, interactive metrics, then allocation.")
         if offline_full is None:
-            st.error("Offline full-objective artifacts missing (`results/recent/ipo_optimizer_weights_val.csv` + returns).")
+            st.error("Offline full-objective artifacts missing (`results/recent/ipo_optimizer_weights_val_sector_mean.csv` + returns).")
         else:
             st.subheader("Offline — full objective")
             render_performance_allocation_block(

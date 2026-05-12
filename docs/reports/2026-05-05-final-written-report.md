@@ -31,18 +31,18 @@ WRDS-backed daily panels feed rolling-window features into a recurrent **allocat
 
 **Sources (summaries on disk):**
 
-- IPO: `results/ipo_optimizer_summary.txt`
+- IPO (offline GRU, sector multi-head): `results/recent/ipo_optimizer_weights_val_sector_mean.csv` + `results/recent/ipo_optimizer_returns_val.csv` (mean across 11 GICS sector heads, 2022-01-25 → 2024-12-31, 738 days — matches the final slides and Streamlit demo Tab 1)
 - Bonds: `results/bonds/bond_optimizer_summary.txt`
-- Commodities: `results/commodity_optimizer_summary.txt`
+- Commodities: `results/older/40539ec/commodity_optimizer_summary.txt`
 
 ### 3.1 Aggregated metrics
 
 | Asset class | Strategy | Total return | Ann. return | Ann. vol | Sharpe | Max DD |
 |-------------|----------|--------------|-------------|----------|--------|--------|
-| IPO | Model | 87.52% | 97.97% | 19.26% | 3.65 | -7.20% |
-| IPO | Market only | 19.40% | 21.24% | 12.25% | 1.63 | -7.89% |
-| IPO | IPO only | 192.78% | 221.19% | 31.03% | 3.92 | -10.08% |
-| IPO | Equal 50/50 | 88.52% | 99.11% | 19.39% | 3.65 | -7.20% |
+| IPO | Model (offline GRU, sector mean) | 49.25% | 45.12% | 16.82% | 2.30 | -10.47% |
+| IPO | Market only | 27.07% | 24.95% | 14.36% | 1.62 | -9.97% |
+| IPO | IPO only | 145.92% | 130.89% | 54.95% | 1.79 | -41.13% |
+| IPO | Equal 50/50 | 82.90% | 75.32% | 30.86% | 1.97 | -25.99% |
 | Bonds | Model | 18.16% | 5.84% | 11.66% | 0.55 | -18.13% |
 | Bonds | Market only | 34.64% | n/a | n/a | 0.67 | n/a |
 | Bonds | Bond only | -4.62% | n/a | n/a | -0.19 | n/a |
@@ -74,7 +74,7 @@ WRDS-backed daily panels feed rolling-window features into a recurrent **allocat
 
 **Artifacts:**
 
-- Data: `results/ab_update_gate_results.csv`
+- Data: `online_training_work/results/ab_update_gate_results.csv`
 - Figure: `figures/online_evaluation/ab_update_gate_results.png`
 
 **Takeaway:** In the evaluated matrix, **cadence-style** update gating tends to outperform **confidence-only** gating on realized outcomes; cutting updates via confidence does not automatically improve net Sharpe when exposure to the IPO sleeve is already conservative.
@@ -86,7 +86,7 @@ WRDS-backed daily panels feed rolling-window features into a recurrent **allocat
 **Artifacts:**
 
 - Figure: `figures/online_evaluation/online_return_trajectories_all_benchmarks.png`
-- Paths: `results/online_path_cadence_lb504.csv`, `results/online_path_confidence_lb504.csv`
+- Paths: `online_training_work/results/online_path_cadence_lb504.csv`, `online_training_work/results/online_path_confidence_lb504.csv`
 
 **Representative cumulative returns (exported snapshot):**
 
@@ -192,7 +192,7 @@ We trained and evaluated variants that **turn down** auxiliary penalties (CVaR, 
 
 ## 12. Future work
 
-- **Unify** optimizer defaults: one scheduler + gradient-control profile across `run_ipo_optimizer_wrds.py`, sensitivity scripts, and Colab/CLI clones.
+- **Unify** optimizer defaults: one scheduler + gradient-control profile across `run_ipo_optimizer_wrds.py` and sensitivity scripts.
 - **Walk-forward validation blocks** (monthly/quarterly anchors) for checkpoint selection instead of single fragile validation slices.
 - **Sleeve-aware objectives:** explicit floors/ceilings or penalty terms on deviation from target IPO beta during labeled regimes.
 - **Feature enrichment** for IPO/bond/commodity sleeves (liquidity, issuance waves, curve factors).
