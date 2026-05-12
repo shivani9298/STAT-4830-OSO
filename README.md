@@ -14,7 +14,7 @@ This repo contains **three related things**:
 
 ### Offline GRU allocator — full objective (`results/recent/ipo_optimizer_weights_val_sector_mean.csv` + `results/recent/ipo_optimizer_returns_val.csv`)
 
-Mean across **11 sector sleeve heads**, validation period shown in `figures/recent/ipo_optimizer/gru/validation_returns_vs_equal_weight.png`. This is what the Streamlit demo shows in the **IPO — full objective** tab and matches the final slides.
+Mean across **11 sector sleeve heads**, validation period shown in `figures/recent/ipo_optimizer/gru/validation_returns_vs_equal_weight.png`. The Streamlit demo's **IPO — full objective** tab displays this experiment. Note: the demo shows ~48% model total return (not 49.25%) because it uses the aggregate IPO index as a proxy for each sector basket; the 49.25% figure in the slides and table below uses the actual per-sector IPO baskets from the training run.
 
 | Strategy | Total Return | Ann. Return | Ann. Vol | Sharpe | Max Drawdown |
 |----------|--------------|-------------|----------|--------|--------------|
@@ -60,7 +60,14 @@ The online cadence model re-trains on a fixed schedule. It significantly underpe
 - Python 3.10+
 - [**uv**](https://docs.astral.sh/uv/) (recommended) or `pip`
 - **WRDS account** (CRSP + SDC)
-- `WRDS_USERNAME` and `WRDS_PASSWORD` environment variables (or interactive login)
+- `WRDS_USERNAME` and `WRDS_PASSWORD` set in a `.env` file at the repo root (or exported in your shell):
+
+```
+WRDS_USERNAME=your_pennkey
+WRDS_PASSWORD=your_password
+```
+
+The `.env` file is gitignored — create it manually after cloning. The `python-dotenv` package (included in `requirements.txt`) loads it automatically.
 
 ### 1. Clone and Install
 
@@ -124,8 +131,6 @@ Install WRDS + data stack:
 pip install -r requirements.txt
 ```
 
-Why this matters: `wrds==3.1.6` declares `sqlalchemy<2`, which conflicts with this repo's SQLAlchemy 2.x requirement in `src/wrds_data.py`.
-
 ### 2. Run the Optimizer
 
 ```bash
@@ -142,25 +147,15 @@ This script:
 
 **Runtime**: ~2–3 minutes.
 
-### 3. Run Compound-Only Loss Experiments (Optional)
+### 3. Interactive Demo (Streamlit)
 
 ```bash
-python scripts/compound_only/run_sensitivity_test_compound_only.py
-python scripts/compound_only/experiment_loss_subset_offline.py
-```
-
-These scripts train offline/online models with the loss restricted to the log-growth (compound return) term only — zeroing CVaR, vol, and turnover penalties. Results land in `results/` and figures in `figures/experiments/`.
-
-### 4. Interactive Demo (Streamlit)
-
-```bash
-pip install streamlit plotly  # if not already installed
 streamlit run scripts/demo.py
 ```
 
-Launches a browser UI with cumulative performance charts, allocation-weight evolution, model vs benchmark comparisons, and scenario toggles (Historical / Asset Rally / Risk-Off).
+Launches a browser UI with cumulative performance charts, allocation-weight evolution, model vs benchmark comparisons, and scenario toggles (Historical / Asset Rally / Risk-Off). (`streamlit` and `plotly` are included in `requirements.txt` — no separate install needed.)
 
-### 5. Hyperparameter Tuning (Optional)
+### 4. Hyperparameter Tuning (Optional)
 
 ```bash
 python notebooks/tune_hyperparameters_wrds.py
@@ -250,7 +245,6 @@ Grid search over window length, volatility penalties, CVaR, etc. Saves the best 
 │   │   ├── loss_subset/             # Training curves + return plots for loss ablations
 │   │   └── sensitivity/             # Hyperparameter sensitivity heatmaps
 │   ├── online_evaluation/           # Online compound return trajectories + IPO weights
-│   ├── architecture/                # Pipeline diagrams (offline GRU, online GRU)
 │   ├── recent/                      # Latest WRDS run figures
 │   └── older/                       # Historical figures grouped by commit hash
 ├── docs/
